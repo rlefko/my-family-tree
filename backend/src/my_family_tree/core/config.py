@@ -9,11 +9,12 @@ Conventions:
 
 from __future__ import annotations
 
+import json
 from functools import lru_cache
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, SecretStr
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import BaseModel, Field, SecretStr, field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class DBSettings(BaseModel):
@@ -114,7 +115,27 @@ class Settings(BaseSettings):
     app_name: str = "My Family Tree"
     log_level: Literal["debug", "info", "warning", "error"] = "info"
     secret_key: SecretStr = SecretStr("change-me-in-production")
-    cors_allow_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
+    # `NoDecode` opts out of pydantic-settings' default JSON decoding for env
+    # values. The validator below accepts plain comma-separated strings so a
+    # human-friendly `.env` (`CORS_ALLOW_ORIGINS=http://a,http://b`) works the
+    # same as a JSON array.
+    cors_allow_origins: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["http://localhost:5173"]
+    )
+
+    @field_validator("cors_allow_origins", mode="before")
+    @classmethod
+    def _parse_cors_list(cls, value: object) -> object:
+        if isinstance(value, list):
+            return value
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return []
+            if stripped.startswith("["):
+                return json.loads(stripped)
+            return [item.strip() for item in stripped.split(",") if item.strip()]
+        return value
 
     db: DBSettings = Field(default_factory=DBSettings)
     redis: RedisSettings = Field(default_factory=RedisSettings)
