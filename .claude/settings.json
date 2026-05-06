@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make *)",
+      "Bash(uv *)",
+      "Bash(yarn *)",
+      "Bash(npx shadcn *)",
+      "Bash(docker compose *)",
+      "Bash(docker *)",
+      "Bash(gh *)",
+      "Bash(terraform fmt *)",
+      "Bash(terraform validate)",
+      "Bash(terraform init *)",
+      "Bash(terraform plan *)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git branch *)",
+      "Bash(curl *)",
+      "Bash(jq *)",
+      "Bash(psql *)",
+      "Bash(pre-commit *)"
+    ]
+  },
+  "env": {
+    "MFT_DEV": "1"
+  }
+}
