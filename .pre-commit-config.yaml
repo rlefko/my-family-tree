@@ -40,11 +40,19 @@ repos:
         language: system
         files: ^frontend/.*\.(ts|tsx|js|jsx|json|md|css|html)$
 
-      - id: eslint-frontend
-        name: eslint (frontend)
-        entry: bash -c 'cd frontend && yarn -s eslint --fix "$@"' --
+      - id: oxlint-frontend
+        name: oxlint (frontend)
+        entry: bash -c 'cd frontend && yarn -s oxlint --fix'
         language: system
         files: ^frontend/.*\.(ts|tsx|js|jsx)$
+        pass_filenames: false
+
+      - id: tsgo-frontend
+        name: tsgo (typecheck frontend)
+        entry: bash -c 'cd frontend && yarn -s tsgo --noEmit'
+        language: system
+        files: ^frontend/.*\.(ts|tsx)$
+        pass_filenames: false
 
       - id: terraform-fmt
         name: terraform fmt

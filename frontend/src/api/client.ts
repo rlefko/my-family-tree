@@ -13,7 +13,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     headers: {
       "X-Request-ID": requestId,
       "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
+      ...init?.headers,
     },
   });
   if (!response.ok) {

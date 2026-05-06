@@ -47,7 +47,7 @@ jobs:
       - run: uv run pytest -m "unit" --cov=my_family_tree --cov-report=xml -q
 
   frontend:
-    name: frontend (lint + test + build)
+    name: frontend (lint + typecheck + test + build)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -59,11 +59,18 @@ jobs:
           node-version: "20"
           cache: "yarn"
           cache-dependency-path: frontend/yarn.lock
-      - run: yarn install --frozen-lockfile
-      - run: yarn lint
-      - run: yarn typecheck
-      - run: yarn test
-      - run: yarn build
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Lint (oxlint)
+        run: yarn lint
+      - name: Typecheck (tsgo)
+        run: yarn typecheck
+      - name: Unit tests (vitest)
+        run: yarn test
+      - name: Production build (vite)
+        run: yarn build
+      - name: Confirm dist artifacts exist
+        run: test -f dist/index.html && test -d dist/assets
 
   terraform:
     name: terraform (fmt + validate)
@@ -84,27 +91,42 @@ jobs:
           done
 
   docker-build:
-    name: docker (smoke build)
+    name: docker (build + boot smoke)
     runs-on: ubuntu-latest
     needs: [backend-lint, frontend]
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      - name: Build api image (smoke)
+      - name: Build backend image
         uses: docker/build-push-action@v6
         with:
           context: ./backend
           push: false
           load: true
           tags: my-family-tree-backend:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-      - name: Build frontend image (smoke)
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+      - name: Build frontend image
         uses: docker/build-push-action@v6
         with:
           context: ./frontend
           push: false
           load: true
           tags: my-family-tree-frontend:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+      - name: Boot smoke (backend CLI + import)
+        run: |
+          docker run --rm my-family-tree-backend:ci \
+            python -c "from my_family_tree.api.app import create_app; from my_family_tree.mcp.server import registered_tool_names; print('routes=', len(create_app().routes), 'tools=', len(registered_tool_names()))"
+      - name: Boot smoke (frontend nginx)
+        run: |
+          docker run --rm -d --name fe-smoke -p 18080:8080 my-family-tree-frontend:ci
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -fsS http://localhost:18080/ >/dev/null; then
+              echo "frontend is serving"; break
+            fi
+            sleep 1
+          done
+          curl -fsS http://localhost:18080/ | grep -q "<title>My Family Tree</title>"
+          docker stop fe-smoke
