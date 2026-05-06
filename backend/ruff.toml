@@ -37,6 +37,8 @@ ignore = [
 "tests/**" = ["S", "ANN", "PLR2004", "PT004"]
 "src/my_family_tree/db/migrations/**" = ["ALL"]
 "**/__init__.py" = ["F401"]
+# CLI subcommands lazy-import heavy modules so `mft version` stays fast.
+"src/my_family_tree/cli/__main__.py" = ["PLC0415"]
 
 [lint.isort]
 known-first-party = ["my_family_tree"]
