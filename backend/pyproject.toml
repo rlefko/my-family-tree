@@ -86,4 +86,6 @@ filterwarnings = [
   "error",
   "ignore::DeprecationWarning:botocore.*",
   "ignore::DeprecationWarning:aiobotocore.*",
+  "ignore::SyntaxWarning:pysbd.*",
+  "ignore::PendingDeprecationWarning:starlette.*",
 ]
