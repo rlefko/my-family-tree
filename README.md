@@ -27,7 +27,7 @@ Then open `http://localhost:5173`.
 | Frontend | TypeScript, React 18, Vite, Tailwind v4, shadcn/ui, TanStack Router + Query |
 | Infra | Terraform on AWS (VPC, ECS Fargate, RDS, S3, ALB, Secrets Manager) |
 | CI | GitHub Actions |
-| Tooling | `uv`, `yarn`, `ruff`, `ty`, `pytest`, `vitest`, `eslint`, `prettier`, `pre-commit` |
+| Tooling | `uv`, `yarn`, `ruff`, `ty`, `pytest`, `vitest`, `oxlint`, `tsgo`, `prettier`, `pre-commit` |
 
 ## Layout
 

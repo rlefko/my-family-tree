@@ -34,7 +34,7 @@ Then `http://localhost:5173` (frontend) and `http://localhost:8000/healthz`
 
 - American English. Use `""` for double quotes, `''` for single. **No em dashes.**
 - Python: src layout, ruff for lint+format, ty for typecheck, structlog only.
-- TypeScript: ESLint flat config + Prettier, `@/` alias, TanStack Router file-based.
+- TypeScript: oxlint for lint, tsgo (TS native-preview) for typecheck, prettier for format, `@/` alias, TanStack Router file-based.
 - One logical change per migration; hand-review autogenerate output.
 
 ## Common tasks
