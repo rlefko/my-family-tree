@@ -5,7 +5,10 @@ import { useHealth } from "@/api/endpoints/health";
 import { env } from "@/lib/env";
 import { cn } from "@/lib/utils";
 
-const NAV: { to: "/" | "/people" | "/tree" | "/documents" | "/conflicts" | "/chat"; label: string }[] = [
+const NAV: {
+  to: "/" | "/people" | "/tree" | "/documents" | "/conflicts" | "/chat";
+  label: string;
+}[] = [
   { to: "/", label: "Dashboard" },
   { to: "/tree", label: "Tree" },
   { to: "/people", label: "People" },
@@ -25,9 +28,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Link
               key={item.to}
               to={item.to}
-              className={cn(
-                "block rounded px-3 py-2 text-sm hover:bg-zinc-100",
-              )}
+              className={cn("block rounded px-3 py-2 text-sm hover:bg-zinc-100")}
               activeProps={{ className: "bg-zinc-100 font-medium" }}
             >
               {item.label}

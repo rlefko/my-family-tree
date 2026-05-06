@@ -11,9 +11,7 @@ function Dashboard() {
   return (
     <section className="p-6">
       <h1 className="text-2xl font-semibold">Dashboard</h1>
-      <p className="mt-1 text-sm text-zinc-500">
-        Counts and recent activity for your family tree.
-      </p>
+      <p className="mt-1 text-sm text-zinc-500">Counts and recent activity for your family tree.</p>
       <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-3">
         <Stat label="People" value={stats.data?.persons} />
         <Stat label="Events" value={stats.data?.events} />
