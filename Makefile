@@ -1,5 +1,7 @@
 SHELL := /bin/bash
-.PHONY: help bootstrap up down nuke logs ps shell-api shell-db migrate migration seed \
+COMPOSE_PROJECT := my-family-tree
+.PHONY: help bootstrap up down nuke restart logs ps shell-api shell-db migrate migration seed \
+  build build-backend build-frontend deps deps-backend deps-frontend deps-fresh \
   test test-backend test-frontend test-int lint format typecheck openapi gen-types \
   mcp-stdio mcp-http tf-fmt tf-validate tf-plan-dev clean
 
@@ -22,8 +24,54 @@ up: ## Start the full stack via docker-compose
 down: ## Stop the stack
 	docker compose down
 
-nuke: ## Stop and remove volumes (data loss)
+nuke: ## Stop and remove ALL volumes (loses db, redis, minio data!)
 	docker compose down -v
+
+restart: ## Restart all running services in place
+	docker compose restart
+
+# ----------------------------------------------------------------------------
+# Dependency / image management
+#
+# Three knobs, in order of escalation:
+#
+#   make deps           After pyproject.toml or package.json changes. Updates
+#                       the running containers' venv / node_modules in place.
+#                       Fast: <30s typical.
+#
+#   make build          After Dockerfile changes (system deps, base image,
+#                       multi-stage layout). Rebuilds the images but keeps
+#                       data volumes (db, redis, minio).
+#
+#   make deps-fresh     If `make deps` got into a weird state (e.g. native
+#                       extensions, mismatched lockfile). Drops the venv and
+#                       node_modules volumes and reinstalls from scratch.
+#                       db/redis/minio data is preserved.
+# ----------------------------------------------------------------------------
+
+build: build-backend build-frontend ## Rebuild all docker images
+
+build-backend: ## Rebuild the backend image (api/worker/mcp share it)
+	docker compose build api
+
+build-frontend: ## Rebuild the frontend production image
+	docker compose build frontend
+
+deps: deps-backend deps-frontend ## Sync deps inside running containers
+
+deps-backend: ## uv sync inside the api container; worker + mcp pick up the shared venv
+	docker compose exec api uv sync --frozen --all-groups
+	docker compose restart worker mcp
+
+deps-frontend: ## yarn install inside the frontend container
+	docker compose exec frontend yarn install --frozen-lockfile
+	docker compose restart frontend
+
+deps-fresh: ## Drop the venv and node_modules volumes and reinstall (preserves db/redis/minio)
+	docker compose stop api worker mcp frontend
+	-docker volume rm $(COMPOSE_PROJECT)_backend_venv $(COMPOSE_PROJECT)_frontend_node_modules
+	docker compose build
+	docker compose up -d
 
 logs: ## Tail all logs
 	docker compose logs -f
