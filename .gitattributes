@@ -1,0 +1,21 @@
+* text=auto eol=lf
+
+# Binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.svg binary
+*.pdf binary
+*.gz binary
+*.zip binary
+*.woff binary
+*.woff2 binary
+
+# Lockfiles should diff but not be reviewed line by line
+uv.lock linguist-generated=true
+yarn.lock linguist-generated=true
+package-lock.json linguist-generated=true
+frontend/src/api/generated/** linguist-generated=true
+frontend/src/routeTree.gen.ts linguist-generated=true
