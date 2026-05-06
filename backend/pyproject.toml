@@ -32,7 +32,6 @@ dependencies = [
   "pillow>=11",
   "pypdfium2>=4.30",
   "pdfminer.six>=20240706",
-  "pysbd>=0.3",
   "tiktoken>=0.8",
   "mcp>=1.0",
   "typer>=0.13",
@@ -86,6 +85,5 @@ filterwarnings = [
   "error",
   "ignore::DeprecationWarning:botocore.*",
   "ignore::DeprecationWarning:aiobotocore.*",
-  "ignore::SyntaxWarning:pysbd.*",
   "ignore::PendingDeprecationWarning:starlette.*",
 ]
