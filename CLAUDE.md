@@ -20,19 +20,31 @@ A personal genealogy research workbench. Upload documents, extract evidence, que
 
 ## Commands
 
-| Make target                                                                | What it does                                                 |
-| -------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| `make bootstrap`                                                           | Tool checks, `uv sync`, `yarn install`, `pre-commit install` |
-| `make up` / `make down` / `make nuke`                                      | Docker compose up / down / down -v                           |
-| `make logs` / `make ps`                                                    | Follow logs / list services                                  |
-| `make shell-api` / `make shell-db`                                         | Bash in api / `psql` in db                                   |
-| `make migrate` / `make migration M="..."`                                  | Apply / autogenerate Alembic migration                       |
-| `make seed`                                                                | Load demo tree data                                          |
-| `make test` / `make test-backend` / `make test-frontend` / `make test-int` | Run tests                                                    |
-| `make lint` / `make format` / `make typecheck`                             | Lint / format / typecheck (back + front)                     |
-| `make openapi` / `make gen-types`                                          | Dump OpenAPI JSON / regen frontend types                     |
-| `make mcp-stdio`                                                           | Run MCP server in stdio mode (for Claude Desktop)            |
-| `make tf-fmt` / `make tf-validate` / `make tf-plan-dev`                    | Terraform helpers (no apply)                                 |
+| Make target                                                                | What it does                                                  |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `make bootstrap`                                                           | Tool checks, `uv sync`, `yarn install`, `pre-commit install`  |
+| `make up` / `make down` / `make nuke` / `make restart`                     | Docker compose up / down / down -v / restart                  |
+| `make build` / `make build-backend` / `make build-frontend`                | Rebuild docker images (use after Dockerfile changes)          |
+| `make deps` / `make deps-backend` / `make deps-frontend`                   | Sync deps inside running containers (uv sync / yarn install)  |
+| `make deps-fresh`                                                          | Drop venv + node_modules volumes and reinstall (db preserved) |
+| `make logs` / `make ps`                                                    | Follow logs / list services                                   |
+| `make shell-api` / `make shell-db`                                         | Bash in api / `psql` in db                                    |
+| `make migrate` / `make migration M="..."`                                  | Apply / autogenerate Alembic migration                        |
+| `make seed`                                                                | Load demo tree data                                           |
+| `make test` / `make test-backend` / `make test-frontend` / `make test-int` | Run tests                                                     |
+| `make lint` / `make format` / `make typecheck`                             | Lint / format / typecheck (back + front)                      |
+| `make openapi` / `make gen-types`                                          | Dump OpenAPI JSON / regen frontend types                      |
+| `make mcp-stdio`                                                           | Run MCP server in stdio mode (for Claude Desktop)             |
+| `make tf-fmt` / `make tf-validate` / `make tf-plan-dev`                    | Terraform helpers (no apply)                                  |
+
+### When dependencies change
+
+| Change                                               | Run                                                                    |
+| ---------------------------------------------------- | ---------------------------------------------------------------------- |
+| Added/removed a package in `pyproject.toml`          | `cd backend && uv lock`, then `make deps-backend`                      |
+| Added/removed a package in `package.json`            | `cd frontend && yarn install`, then `make deps-frontend`               |
+| Edited `backend/Dockerfile` or `frontend/Dockerfile` | `make build`                                                           |
+| Native extension trouble or weird state              | `make deps-fresh` (drops venv/node_modules volumes, db data preserved) |
 
 ## Conventions
 
