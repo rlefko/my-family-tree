@@ -42,8 +42,17 @@ frontend/dist/
 frontend/.vite/
 frontend/coverage/
 
-# Generated route tree (TanStack Router)
+# Generated route tree (TanStack Router) — regenerated on every build via
+# `yarn gen:routes`, so we don't commit it.
 frontend/src/routeTree.gen.ts
+
+# tsc artifacts that escape when building config files
+frontend/vite.config.js
+frontend/vite.config.d.ts
+frontend/vite.config.js.map
+frontend/vitest.config.js
+frontend/vitest.config.d.ts
+frontend/*.tsbuildinfo
 
 # Env files
 .env
