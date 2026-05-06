@@ -1,1 +1,1 @@
-"""Module placeholder. Populated in a later commit."""
+"""Core utilities: config, logging, ids, dates, errors, time."""
