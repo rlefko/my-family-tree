@@ -242,5 +242,3 @@ def _translate_openai_event(raw: Any) -> list[StreamEvent]:
             )
         events.append(StreamEvent(type="done", stop_reason="end_turn"))
     return events
-
-
