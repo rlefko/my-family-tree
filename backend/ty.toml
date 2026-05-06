@@ -1,0 +1,18 @@
+# ty (Astral typechecker) configuration. ty is alpha; rules and config schema
+# may change. We pin ty aggressively in pyproject so behavior stays stable
+# between bumps.
+
+[environment]
+python-version = "3.14"
+root = ["src", "tests"]
+
+[src]
+include = ["src", "tests"]
+exclude = [
+  "src/my_family_tree/db/migrations/versions",
+  "**/__pycache__",
+]
+
+[rules]
+unresolved-import = "error"
+invalid-argument-type = "error"

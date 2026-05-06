@@ -1,0 +1,48 @@
+target-version = "py314"
+line-length = 100
+src = ["src", "tests"]
+extend-exclude = ["src/my_family_tree/db/migrations/versions"]
+
+[lint]
+select = [
+  "E",    # pycodestyle errors
+  "F",    # pyflakes
+  "W",    # pycodestyle warnings
+  "I",    # isort
+  "B",    # flake8-bugbear
+  "UP",   # pyupgrade
+  "N",    # pep8-naming
+  "ASYNC", # flake8-async
+  "S",    # flake8-bandit
+  "SIM",  # flake8-simplify
+  "PL",   # pylint
+  "RUF",  # ruff-specific
+  "TID",  # flake8-tidy-imports
+  "ANN",  # flake8-annotations
+  "C4",   # flake8-comprehensions
+  "DTZ",  # flake8-datetimez
+  "PIE",  # flake8-pie
+  "PT",   # flake8-pytest-style
+  "RET",  # flake8-return
+  "PTH",  # flake8-use-pathlib
+]
+ignore = [
+  "ANN401",  # any-type allowed in some adapter seams
+  "PLR0913", # too-many-arguments
+  "S101",    # assert (we use it in tests)
+  "S104",    # 0.0.0.0 bind (intentional in dev)
+]
+
+[lint.per-file-ignores]
+"tests/**" = ["S", "ANN", "PLR2004", "PT004"]
+"src/my_family_tree/db/migrations/**" = ["ALL"]
+"**/__init__.py" = ["F401"]
+
+[lint.isort]
+known-first-party = ["my_family_tree"]
+combine-as-imports = true
+
+[format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
