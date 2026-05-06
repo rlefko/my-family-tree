@@ -1,0 +1,60 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+        args: ["--maxkb=2048"]
+      - id: detect-private-key
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.7.4
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+        files: ^backend/.*\.py$
+      - id: ruff-format
+        files: ^backend/.*\.py$
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+
+  - repo: local
+    hooks:
+      - id: ty
+        name: ty (typecheck backend)
+        entry: bash -c 'cd backend && uv run ty check src tests'
+        language: system
+        pass_filenames: false
+        files: ^backend/.*\.py$
+
+      - id: prettier-frontend
+        name: prettier (frontend)
+        entry: bash -c 'cd frontend && yarn -s prettier --write "$@"' --
+        language: system
+        files: ^frontend/.*\.(ts|tsx|js|jsx|json|md|css|html)$
+
+      - id: eslint-frontend
+        name: eslint (frontend)
+        entry: bash -c 'cd frontend && yarn -s eslint --fix "$@"' --
+        language: system
+        files: ^frontend/.*\.(ts|tsx|js|jsx)$
+
+      - id: terraform-fmt
+        name: terraform fmt
+        entry: bash -c 'terraform fmt -recursive infra/terraform'
+        language: system
+        files: ^infra/terraform/.*\.tf$
+        pass_filenames: false
+
+      - id: emoji-commit
+        name: emoji-prefixed commit message
+        entry: bash scripts/check-commit-msg.sh
+        language: system
+        stages: [commit-msg]
