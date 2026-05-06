@@ -1,0 +1,89 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg
+*.egg-info/
+build/
+dist/
+.eggs/
+.python-version-local
+
+# uv
+.uv-cache/
+
+# Test / lint / type-check caches
+.pytest_cache/
+.ruff_cache/
+.ty_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+.cache/
+
+# Pre-commit
+.pre-commit-cache/
+
+# Node
+node_modules/
+.yarn/cache/
+.yarn/install-state.gz
+.yarn/build-state.yml
+.yarn/unplugged/
+.pnp.*
+*.tsbuildinfo
+
+# Vite / frontend build
+frontend/dist/
+frontend/.vite/
+frontend/coverage/
+
+# Generated route tree (TanStack Router)
+frontend/src/routeTree.gen.ts
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Terraform
+infra/terraform/**/.terraform/
+infra/terraform/**/.terraform.lock.hcl
+infra/terraform/**/*.tfstate
+infra/terraform/**/*.tfstate.*
+infra/terraform/**/*.tfplan
+infra/terraform/**/crash.log
+infra/terraform/**/crash.*.log
+infra/terraform/**/override.tf
+infra/terraform/**/override.tf.json
+infra/terraform/**/*_override.tf
+infra/terraform/**/*_override.tf.json
+
+# Docker
+docker-compose.override.yml
+!docker-compose.override.yml.example
+
+# Logs
+*.log
+
+# Local data
+data/
+.context/
+
+# OS
+.AppleDouble
+.LSOverride
+Icon
+._*
