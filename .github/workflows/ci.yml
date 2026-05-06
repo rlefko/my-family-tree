@@ -63,6 +63,8 @@ jobs:
         run: yarn install --frozen-lockfile
       - name: Lint (oxlint)
         run: yarn lint
+      - name: Format check (prettier)
+        run: yarn format:check
       - name: Typecheck (tsgo)
         run: yarn typecheck
       - name: Unit tests (vitest)

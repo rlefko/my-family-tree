@@ -19,14 +19,14 @@ flowchart LR
 
 ## Per-kind extractors
 
-| kind     | path                          | notes |
-|----------|-------------------------------|-------|
-| pdf_text | `ingest/pdf.py`               | `pypdfium2` text per page; no LLM |
-| pdf_scan | `ingest/pdf.py` + `image.py`  | render pages, then Tesseract; vision-LLM fallback (cost-capped) for low-confidence pages |
-| image    | `ingest/image.py`             | Tesseract; same fallback |
-| text     | `ingest/text.py`              | UTF-8 with chardet fallback |
-| gedcom   | `ingest/gedcom.py`            | python-gedcom-style parsing; high-confidence direct claim emission |
-| note     | `ingest/note.py`              | source kind `family_oral`; confidence floor |
+| kind     | path                         | notes                                                                                    |
+| -------- | ---------------------------- | ---------------------------------------------------------------------------------------- |
+| pdf_text | `ingest/pdf.py`              | `pypdfium2` text per page; no LLM                                                        |
+| pdf_scan | `ingest/pdf.py` + `image.py` | render pages, then Tesseract; vision-LLM fallback (cost-capped) for low-confidence pages |
+| image    | `ingest/image.py`            | Tesseract; same fallback                                                                 |
+| text     | `ingest/text.py`             | UTF-8 with chardet fallback                                                              |
+| gedcom   | `ingest/gedcom.py`           | python-gedcom-style parsing; high-confidence direct claim emission                       |
+| note     | `ingest/note.py`             | source kind `family_oral`; confidence floor                                              |
 
 ## Storage layout
 
