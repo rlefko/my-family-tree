@@ -1,10 +1,20 @@
 name: my-family-tree
 
+# Shared anchor for the three Python services. They all use the same image
+# (different command). The bind-mount of `./backend:/app` is what gives us
+# hot reload. The named `backend_venv:/app/.venv` mount is critical: without
+# it the host bind would clobber the venv baked into the image (the host's
+# .venv is built for macOS, the container's is Linux). With it, source files
+# come from the host and dependencies stay from the image.
 x-api-base: &api-base
   build:
     context: ./backend
     dockerfile: Dockerfile
   env_file: .env
+  environment:
+    # Force polling watchers. inotify through macOS bind mounts is unreliable;
+    # polling adds a small CPU cost in dev only and Just Works.
+    WATCHFILES_FORCE_POLLING: "true"
   depends_on:
     db:
       condition: service_healthy
@@ -14,6 +24,7 @@ x-api-base: &api-base
       condition: service_healthy
   volumes:
     - ./backend:/app
+    - backend_venv:/app/.venv
   restart: unless-stopped
 
 services:
@@ -74,27 +85,40 @@ services:
       echo 'minio bootstrap complete'"
     restart: "no"
 
+  # FastAPI app. uvicorn `--reload` watches /app and restarts on .py changes.
   api:
     <<: *api-base
-    command: uvicorn my_family_tree.api.app:create_app --factory --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn my_family_tree.api.app:create_app --factory --host 0.0.0.0 --port 8000 --reload --reload-dir /app/src
     ports:
       - "8000:8000"
 
+  # arq worker. `--watch /app/src` re-execs the worker on .py changes.
   worker:
     <<: *api-base
-    command: arq my_family_tree.workers.arq_app.WorkerSettings
+    command: arq my_family_tree.workers.arq_app.WorkerSettings --watch /app/src
 
+  # MCP HTTP server. Wrapped in watchfiles so any change under src/ restarts.
   mcp:
     <<: *api-base
-    command: python -m my_family_tree.cli mcp --transport http --host 0.0.0.0 --port 8765
+    command: >
+      watchfiles
+      "python -m my_family_tree.cli mcp --transport http --host 0.0.0.0 --port 8765"
+      /app/src
     ports:
       - "8765:8765"
 
+  # Vite dev server. HMR is built in. CHOKIDAR_USEPOLLING + WATCHPACK_POLLING
+  # cover both watcher backends so file events survive the Docker Desktop
+  # bind-mount path on macOS.
   frontend:
     image: node:20-alpine
     working_dir: /app
-    command: sh -c "yarn install && yarn dev --host 0.0.0.0"
+    command: sh -c "yarn install --frozen-lockfile && yarn dev --host 0.0.0.0"
     env_file: .env
+    environment:
+      CHOKIDAR_USEPOLLING: "true"
+      WATCHPACK_POLLING: "true"
+      WATCHFILES_FORCE_POLLING: "true"
     ports:
       - "5173:5173"
     volumes:
@@ -106,4 +130,5 @@ volumes:
   pgdata:
   redisdata:
   miniodata:
+  backend_venv:
   frontend_node_modules:

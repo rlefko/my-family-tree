@@ -13,6 +13,23 @@ make migrate && make seed
 Then `http://localhost:5173` (frontend) and `http://localhost:8000/healthz`
 (api).
 
+## Hot reload
+
+All four code services reload on file changes:
+
+| Service  | Reload mechanism                                                      |
+| -------- | --------------------------------------------------------------------- |
+| api      | `uvicorn --reload --reload-dir /app/src` (watches Python files)       |
+| worker   | `arq ... --watch /app/src` (re-execs the worker on .py changes)       |
+| mcp      | wrapped in `watchfiles "..." /app/src` (restarts the MCP HTTP server) |
+| frontend | Vite HMR via the Docker bind mount                                    |
+
+`WATCHFILES_FORCE_POLLING=true` and `CHOKIDAR_USEPOLLING=true` are set in
+docker-compose so file events survive the Docker Desktop bind mount on
+macOS. The host's `backend/.venv` is shadowed by a named volume
+(`backend_venv:/app/.venv`) so the container always uses its Linux-built
+venv, not the host's macOS-built one.
+
 ## Branch + PR conventions
 
 - Branch name: `<author>/<kebab-case-title>` (e.g. `ryan/fix-place-merge`).
