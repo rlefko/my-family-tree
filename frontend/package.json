@@ -11,9 +11,9 @@
     "preview": "vite preview",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "typecheck": "tsgo --noEmit",
+    "format": "prettier --write . ../docs ../README.md ../CLAUDE.md ../.github",
+    "format:check": "prettier --check . ../docs ../README.md ../CLAUDE.md ../.github",
+    "typecheck": "yarn -s gen:routes && tsgo --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "gen:types": "openapi-typescript ../backend/openapi.json -o src/api/generated/schema.d.ts"

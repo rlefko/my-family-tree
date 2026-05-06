@@ -16,10 +16,7 @@ function ConflictsPage() {
       </p>
       <ul className="mt-4 space-y-3">
         {(data?.items ?? []).map((c) => (
-          <li
-            key={c.id}
-            className="rounded border border-zinc-200 bg-white p-4 shadow-sm"
-          >
+          <li key={c.id} className="rounded border border-zinc-200 bg-white p-4 shadow-sm">
             <div className="text-sm font-semibold">{c.kind}</div>
             <div className="text-sm">{c.summary}</div>
             <div className="mt-1 text-xs text-zinc-500">

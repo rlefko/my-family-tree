@@ -30,7 +30,9 @@ function PeoplePage() {
           ))}
         </ul>
         {data?.items.length === 0 ? (
-          <p className="mt-2 text-sm text-zinc-500">No people yet. Upload a GEDCOM to populate the tree.</p>
+          <p className="mt-2 text-sm text-zinc-500">
+            No people yet. Upload a GEDCOM to populate the tree.
+          </p>
         ) : null}
       </div>
     </section>

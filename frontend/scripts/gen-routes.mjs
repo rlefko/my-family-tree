@@ -1,11 +1,7 @@
 // Generate src/routeTree.gen.ts from the file-based routes without spinning
 // up the dev server. Used by `yarn build` so tsc has the generated module
 // before it runs.
-import {
-  Generator,
-  getConfig,
-  physicalGetRouteNodes,
-} from "@tanstack/router-generator";
+import { Generator, getConfig, physicalGetRouteNodes } from "@tanstack/router-generator";
 import path from "node:path";
 
 const root = path.resolve(process.cwd());
