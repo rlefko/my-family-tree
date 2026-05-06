@@ -33,23 +33,23 @@ resource "aws_db_parameter_group" "this" {
 }
 
 resource "aws_db_instance" "this" {
-  identifier              = "${var.name_prefix}-postgres"
-  engine                  = "postgres"
-  engine_version          = "17.2"
-  instance_class          = var.instance_class
-  allocated_storage       = var.allocated_storage
-  storage_type            = "gp3"
-  storage_encrypted       = true
-  db_name                 = var.db_name
-  username                = var.master_username
+  identifier                  = "${var.name_prefix}-postgres"
+  engine                      = "postgres"
+  engine_version              = "17.2"
+  instance_class              = var.instance_class
+  allocated_storage           = var.allocated_storage
+  storage_type                = "gp3"
+  storage_encrypted           = true
+  db_name                     = var.db_name
+  username                    = var.master_username
   manage_master_user_password = true
-  parameter_group_name    = aws_db_parameter_group.this.name
-  db_subnet_group_name    = aws_db_subnet_group.this.name
-  vpc_security_group_ids  = [aws_security_group.db.id]
-  multi_az                = var.multi_az
-  publicly_accessible     = false
-  skip_final_snapshot     = !var.deletion_protection
-  deletion_protection     = var.deletion_protection
-  backup_retention_period = var.backup_retention_period
-  tags                    = var.tags
+  parameter_group_name        = aws_db_parameter_group.this.name
+  db_subnet_group_name        = aws_db_subnet_group.this.name
+  vpc_security_group_ids      = [aws_security_group.db.id]
+  multi_az                    = var.multi_az
+  publicly_accessible         = false
+  skip_final_snapshot         = !var.deletion_protection
+  deletion_protection         = var.deletion_protection
+  backup_retention_period     = var.backup_retention_period
+  tags                        = var.tags
 }
