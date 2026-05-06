@@ -16,18 +16,18 @@ Then open `http://localhost:5173`.
 
 ## Stack
 
-| Area | Choice |
-|------|--------|
-| Backend | Python 3.14, FastAPI, SQLAlchemy 2 + SQLModel, Alembic, Pydantic, arq |
-| Database | Postgres 17 + `pgvector` (HNSW on `halfvec(3072)`), `pg_trgm`, GIN-FTS |
-| Object storage | MinIO locally, S3 in prod |
-| LLMs | OpenAI (`gpt-5.5`, default) and Anthropic (Claude Opus 4.7 / Sonnet 4.6); direct SDKs, no abstraction layer |
-| Embeddings | OpenAI `text-embedding-3-large` (3072 dims) |
-| MCP | Official `mcp` Python SDK, stdio + Streamable HTTP transports |
-| Frontend | TypeScript, React 18, Vite, Tailwind v4, shadcn/ui, TanStack Router + Query |
-| Infra | Terraform on AWS (VPC, ECS Fargate, RDS, S3, ALB, Secrets Manager) |
-| CI | GitHub Actions |
-| Tooling | `uv`, `yarn`, `ruff`, `ty`, `pytest`, `vitest`, `oxlint`, `tsgo`, `prettier`, `pre-commit` |
+| Area           | Choice                                                                                                      |
+| -------------- | ----------------------------------------------------------------------------------------------------------- |
+| Backend        | Python 3.14, FastAPI, SQLAlchemy 2 + SQLModel, Alembic, Pydantic, arq                                       |
+| Database       | Postgres 17 + `pgvector` (HNSW on `halfvec(3072)`), `pg_trgm`, GIN-FTS                                      |
+| Object storage | MinIO locally, S3 in prod                                                                                   |
+| LLMs           | OpenAI (`gpt-5.5`, default) and Anthropic (Claude Opus 4.7 / Sonnet 4.6); direct SDKs, no abstraction layer |
+| Embeddings     | OpenAI `text-embedding-3-large` (3072 dims)                                                                 |
+| MCP            | Official `mcp` Python SDK, stdio + Streamable HTTP transports                                               |
+| Frontend       | TypeScript, React 18, Vite, Tailwind v4, shadcn/ui, TanStack Router + Query                                 |
+| Infra          | Terraform on AWS (VPC, ECS Fargate, RDS, S3, ALB, Secrets Manager)                                          |
+| CI             | GitHub Actions                                                                                              |
+| Tooling        | `uv`, `yarn`, `ruff`, `ty`, `pytest`, `vitest`, `oxlint`, `tsgo`, `prettier`, `pre-commit`                  |
 
 ## Layout
 

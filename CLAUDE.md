@@ -20,19 +20,19 @@ A personal genealogy research workbench. Upload documents, extract evidence, que
 
 ## Commands
 
-| Make target | What it does |
-|-------------|--------------|
-| `make bootstrap` | Tool checks, `uv sync`, `yarn install`, `pre-commit install` |
-| `make up` / `make down` / `make nuke` | Docker compose up / down / down -v |
-| `make logs` / `make ps` | Follow logs / list services |
-| `make shell-api` / `make shell-db` | Bash in api / `psql` in db |
-| `make migrate` / `make migration M="..."` | Apply / autogenerate Alembic migration |
-| `make seed` | Load demo tree data |
-| `make test` / `make test-backend` / `make test-frontend` / `make test-int` | Run tests |
-| `make lint` / `make format` / `make typecheck` | Lint / format / typecheck (back + front) |
-| `make openapi` / `make gen-types` | Dump OpenAPI JSON / regen frontend types |
-| `make mcp-stdio` | Run MCP server in stdio mode (for Claude Desktop) |
-| `make tf-fmt` / `make tf-validate` / `make tf-plan-dev` | Terraform helpers (no apply) |
+| Make target                                                                | What it does                                                 |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `make bootstrap`                                                           | Tool checks, `uv sync`, `yarn install`, `pre-commit install` |
+| `make up` / `make down` / `make nuke`                                      | Docker compose up / down / down -v                           |
+| `make logs` / `make ps`                                                    | Follow logs / list services                                  |
+| `make shell-api` / `make shell-db`                                         | Bash in api / `psql` in db                                   |
+| `make migrate` / `make migration M="..."`                                  | Apply / autogenerate Alembic migration                       |
+| `make seed`                                                                | Load demo tree data                                          |
+| `make test` / `make test-backend` / `make test-frontend` / `make test-int` | Run tests                                                    |
+| `make lint` / `make format` / `make typecheck`                             | Lint / format / typecheck (back + front)                     |
+| `make openapi` / `make gen-types`                                          | Dump OpenAPI JSON / regen frontend types                     |
+| `make mcp-stdio`                                                           | Run MCP server in stdio mode (for Claude Desktop)            |
+| `make tf-fmt` / `make tf-validate` / `make tf-plan-dev`                    | Terraform helpers (no apply)                                 |
 
 ## Conventions
 

@@ -23,10 +23,10 @@ flowchart LR
 
 ## Process boundaries
 
-| Process | Image | Command | Notes |
-|---------|-------|---------|-------|
-| api     | backend | `uvicorn ... --factory` | FastAPI; mounts MCP HTTP at `/mcp`; SSE chat |
-| worker  | backend | `arq ... WorkerSettings` | ingestion, embeddings, claim extraction, deep research |
+| Process | Image   | Command                    | Notes                                                                |
+| ------- | ------- | -------------------------- | -------------------------------------------------------------------- |
+| api     | backend | `uvicorn ... --factory`    | FastAPI; mounts MCP HTTP at `/mcp`; SSE chat                         |
+| worker  | backend | `arq ... WorkerSettings`   | ingestion, embeddings, claim extraction, deep research               |
 | mcp     | backend | `mft mcp --transport http` | dedicated MCP HTTP service for external clients (Claude Desktop, CI) |
 
 The chat agent uses the **in-process `ToolHost`** to call MCP tool handlers
