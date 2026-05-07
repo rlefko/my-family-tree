@@ -6,6 +6,8 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+from arq import create_pool
+from arq.connections import RedisSettings
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -23,8 +25,10 @@ from my_family_tree.api.routers import (
     tree,
 )
 from my_family_tree.core.config import get_settings
+from my_family_tree.core.errors import LLMProviderError
 from my_family_tree.core.logging import configure_logging, get_logger
 from my_family_tree.db.session import make_engine, make_sessionmaker
+from my_family_tree.embed.client import build_embeddings_client
 from my_family_tree.llm.registry import build_registry
 from my_family_tree.storage.s3 import build_object_store
 
@@ -41,10 +45,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.session_factory = make_sessionmaker(engine)
     app.state.storage = build_object_store(settings.s3)
     app.state.llm = build_registry(settings.llm)
+    try:
+        app.state.embeddings_client = build_embeddings_client(settings.llm)
+    except LLMProviderError as e:
+        # Missing key is a soft-fail at startup; deps that need embeddings
+        # raise 502 only when actually called.
+        log.warning("api.embeddings_unavailable", error=str(e))
+        app.state.embeddings_client = None
+    app.state.enqueue_pool = await create_pool(RedisSettings.from_dsn(settings.redis.url))
     log.info("api.startup", env=settings.app_env)
     try:
         yield
     finally:
+        await app.state.enqueue_pool.close(close_connection_pool=True)
         await engine.dispose()
         log.info("api.shutdown")
 
