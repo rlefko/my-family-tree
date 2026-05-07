@@ -14,7 +14,6 @@ from typing import Any
 import httpx
 
 from my_family_tree.core.errors import ExternalProviderError
-from my_family_tree.core.logging import get_logger
 from my_family_tree.external.genealogy.base import (
     GenealogyHit,
     GenealogyProfile,
@@ -23,9 +22,7 @@ from my_family_tree.external.genealogy.base import (
     as_dict,
     as_list,
 )
-from my_family_tree.external.http import build_http_client
-
-log = get_logger(__name__)
+from my_family_tree.external.http import build_http_client, request_json
 
 WIKITREE_API_URL = "https://api.wikitree.com/api.php"
 
@@ -261,15 +258,9 @@ class WikiTreeProvider(GenealogyProvider):
         return out
 
     async def _post(self, data: dict[str, str]) -> object:
-        try:
-            response = await self.client.post(WIKITREE_API_URL, data=data)
-            response.raise_for_status()
-        except httpx.HTTPError as e:
-            raise ExternalProviderError(f"wikitree request failed: {e}") from e
-        try:
-            return response.json()
-        except ValueError as e:
-            raise ExternalProviderError(f"wikitree returned non-json body: {e}") from e
+        return await request_json(
+            self.client, "POST", WIKITREE_API_URL, label="wikitree", data=data
+        )
 
     async def aclose(self) -> None:
         await self.client.aclose()

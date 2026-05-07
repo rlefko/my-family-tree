@@ -14,11 +14,8 @@ import httpx
 from pydantic import SecretStr
 
 from my_family_tree.core.errors import ExternalProviderError
-from my_family_tree.core.logging import get_logger
-from my_family_tree.external.http import build_http_client
+from my_family_tree.external.http import build_http_client, request_json
 from my_family_tree.external.web_search.base import WebSearchProvider, WebSearchResult
-
-log = get_logger(__name__)
 
 TAVILY_SEARCH_URL = "https://api.tavily.com/search"
 
@@ -38,15 +35,9 @@ class TavilyProvider(WebSearchProvider):
             "include_answer": False,
             "include_raw_content": False,
         }
-        try:
-            response = await self.client.post(TAVILY_SEARCH_URL, json=body)
-            response.raise_for_status()
-        except httpx.HTTPError as e:
-            raise ExternalProviderError(f"tavily search failed: {e}") from e
-        try:
-            payload = response.json()
-        except ValueError as e:
-            raise ExternalProviderError(f"tavily returned non-json body: {e}") from e
+        payload = await request_json(self.client, "POST", TAVILY_SEARCH_URL, label="tavily", json=body)
+        if not isinstance(payload, dict):
+            raise ExternalProviderError("tavily response was not an object")
         results = payload.get("results")
         if not isinstance(results, list):
             raise ExternalProviderError("tavily response missing 'results' list")

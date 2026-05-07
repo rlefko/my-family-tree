@@ -20,7 +20,6 @@ import httpx
 from pydantic import SecretStr
 
 from my_family_tree.core.errors import ExternalProviderError
-from my_family_tree.core.logging import get_logger
 from my_family_tree.external.genealogy.base import (
     GenealogyHit,
     GenealogyProfile,
@@ -29,10 +28,7 @@ from my_family_tree.external.genealogy.base import (
     as_dict,
     as_list,
 )
-from my_family_tree.external.http import build_http_client
-
-log = get_logger(__name__)
-
+from my_family_tree.external.http import build_http_client, request_json
 
 _TOKEN_URL = "https://ident.familysearch.org/cis-web/oauth2/v3/token"  # noqa: S105
 _TOKEN_LEEWAY_S = 60
@@ -208,46 +204,36 @@ class FamilySearchProvider(GenealogyProvider):
         allow_404: bool = False,
     ) -> object:
         token = await self._access_token()
-        try:
-            response = await self.client.get(
-                url,
-                params=params,
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Accept": "application/x-gedcomx-v1+json",
-                },
-            )
-            if allow_404 and response.status_code == _HTTP_NOT_FOUND:
-                return None
-            response.raise_for_status()
-        except httpx.HTTPError as e:
-            raise ExternalProviderError(f"familysearch request failed: {e}") from e
-        try:
-            return response.json()
-        except ValueError as e:
-            raise ExternalProviderError(f"familysearch returned non-json body: {e}") from e
+        return await request_json(
+            self.client,
+            "GET",
+            url,
+            label="familysearch",
+            allow_status=(_HTTP_NOT_FOUND,) if allow_404 else (),
+            params=params,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/x-gedcomx-v1+json",
+            },
+        )
 
     async def _access_token(self) -> str:
         now = time.monotonic()
         token = self._token
         if token is not None and token.fresh(now):
             return token.value
-        try:
-            response = await self.client.post(
-                _TOKEN_URL,
-                data={
-                    "grant_type": "client_credentials",
-                    "client_id": self.client_id.get_secret_value(),
-                    "client_secret": self.client_secret.get_secret_value(),
-                },
-                headers={"Accept": "application/json"},
-            )
-            response.raise_for_status()
-            payload = response.json()
-        except httpx.HTTPError as e:
-            raise ExternalProviderError(f"familysearch token request failed: {e}") from e
-        except ValueError as e:
-            raise ExternalProviderError(f"familysearch token response was not json: {e}") from e
+        payload = await request_json(
+            self.client,
+            "POST",
+            _TOKEN_URL,
+            label="familysearch token",
+            data={
+                "grant_type": "client_credentials",
+                "client_id": self.client_id.get_secret_value(),
+                "client_secret": self.client_secret.get_secret_value(),
+            },
+            headers={"Accept": "application/json"},
+        )
         token_payload = as_dict(payload)
         if token_payload is None:
             raise ExternalProviderError("familysearch token response was not an object")
