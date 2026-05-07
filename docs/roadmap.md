@@ -50,7 +50,8 @@
 - Cross-encoder rerank on hybrid search results
 - GEDCOM 7 export
 - Authentication (single-user with shared password, then multi-user)
-- Deep research subagent with full plan/search/extract/propose loop
+- [x] External research tools (web + genealogy MCP tools, optional providers)
+- Deep research orchestration with planning
 - Async resume for `request_user_input` (queue + paired reply)
 - Argument-token streaming on tool calls (currently we stream final input)
 - Synchronous post-apply conflict-rule sweep (currently nightly only)
