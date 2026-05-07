@@ -28,7 +28,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from my_family_tree.agent.budgets import Budgets
 from my_family_tree.agent.loop import ChatAgent, ChatTurnEvent
-from my_family_tree.api.deps import LLMDep, SettingsDep
+from my_family_tree.api.deps import LLMDep
 from my_family_tree.core.logging import get_logger
 from my_family_tree.core.time import utcnow
 from my_family_tree.db.session import session_scope
@@ -301,12 +301,10 @@ async def _finalize_run(
 async def chat(
     req: ChatRequest,
     llm: LLMDep,
-    settings: SettingsDep,
     request: Request,
 ) -> ChatResponse:
     """Non-streaming chat. Drains the agent's event stream into a single JSON
     response. Used by tests and scripts; the frontend uses `/chat/stream`."""
-    del settings
     provider, model = llm.resolve()
     conversation_id, agent_run_id = await _ensure_conversation_and_run(
         request,
@@ -360,12 +358,10 @@ async def chat(
 async def chat_stream(
     req: ChatRequest,
     llm: LLMDep,
-    settings: SettingsDep,
     request: Request,
 ) -> EventSourceResponse:
     """Streaming chat. Returns an SSE stream of agent events. Each event has
     `event: <type>` and `data: <json>`."""
-    del settings
     provider, model = llm.resolve()
     conversation_id, agent_run_id = await _ensure_conversation_and_run(
         request,
