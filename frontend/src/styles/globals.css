@@ -146,3 +146,17 @@ body {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+
+/* Top-of-chat progress stripe — indeterminate bar that slides while the
+ * agent is working. */
+@keyframes progress-stripe {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+.animate-progress-stripe {
+  animation: progress-stripe 1.4s linear infinite;
+}

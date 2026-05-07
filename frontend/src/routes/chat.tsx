@@ -62,7 +62,7 @@ function ChatPage() {
         onNewChat={newChat}
       />
 
-      <div className="flex flex-1 flex-col">
+      <div className="relative flex flex-1 flex-col">
         <header className="flex items-center justify-between border-b border-zinc-200 bg-white px-6 py-4">
           <div>
             <h1 className="text-xl font-semibold">Chat</h1>
@@ -71,7 +71,18 @@ function ChatPage() {
               here in chat.
             </p>
           </div>
+          {busy ? <RunningStatus onStop={stop} /> : null}
         </header>
+
+        {busy ? (
+          <div
+            className="h-0.5 w-full overflow-hidden bg-indigo-100"
+            aria-label="Working"
+            title="Working"
+          >
+            <div className="h-full w-1/3 animate-progress-stripe bg-indigo-500" />
+          </div>
+        ) : null}
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto bg-zinc-50/50 px-4 py-6 sm:px-6">
           {turns.length === 0 ? (
@@ -136,6 +147,24 @@ function ChatPage() {
         </form>
       </div>
     </section>
+  );
+}
+
+function RunningStatus({ onStop }: { onStop: () => void }) {
+  return (
+    <div className="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700">
+      <Loader2 className="h-3 w-3 animate-spin" />
+      <span>Agent running...</span>
+      <button
+        type="button"
+        onClick={onStop}
+        className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-white px-2 py-0.5 text-[11px] font-medium text-indigo-700 hover:bg-indigo-100"
+        aria-label="Stop the agent"
+      >
+        <Square className="h-2.5 w-2.5" />
+        Stop
+      </button>
+    </div>
   );
 }
 
@@ -208,6 +237,7 @@ function Bubble({ turn }: { turn: ChatTurn }) {
   const hasContent = !!turn.content;
   const hasThinking = !!turn.thinking;
   const isQuiet = !hasContent && toolCalls.length === 0;
+  const runningTool = toolCalls.find((c) => c.status === "running");
   return (
     <div
       className={cn(
@@ -240,7 +270,33 @@ function Bubble({ turn }: { turn: ChatTurn }) {
       ) : !isUser && isQuiet && !turn.pending ? (
         <span className="text-xs italic text-zinc-400">(no response — try rephrasing)</span>
       ) : null}
+      {!isUser && turn.pending && !isQuiet ? (
+        <BusyFooter
+          runningToolName={runningTool?.name ?? null}
+          isStreamingText={hasContent}
+        />
+      ) : null}
       {!isUser && proposalIds.length > 0 ? <InlineProposals ids={proposalIds} /> : null}
+    </div>
+  );
+}
+
+function BusyFooter({
+  runningToolName,
+  isStreamingText,
+}: {
+  runningToolName: string | null;
+  isStreamingText: boolean;
+}) {
+  const label = runningToolName
+    ? `Calling ${runningToolName}...`
+    : isStreamingText
+      ? "Writing reply..."
+      : "Working...";
+  return (
+    <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700">
+      <Loader2 className="h-3 w-3 animate-spin" />
+      <span>{label}</span>
     </div>
   );
 }
