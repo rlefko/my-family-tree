@@ -136,6 +136,9 @@ class OpenAIProvider(LLMProvider):
         if reasoning is not None and reasoning.effort != "none":
             request["reasoning"] = {
                 "effort": OPENAI_EFFORT_FALLBACKS[reasoning.effort],
+                # Ask for an auto-summarized reasoning trace so the chat UI
+                # can show a "thinking..." pill while the model deliberates.
+                "summary": "auto",
             }
 
         return _stream_iter(self._client, request)
@@ -223,6 +226,16 @@ def _translate_openai_event(raw: Any, item_to_call_id: dict[str, str]) -> list[S
 
     if event_type == "response.output_text.delta":
         events.append(StreamEvent(type="text_delta", text=getattr(raw, "delta", "")))
+
+    elif event_type in (
+        "response.reasoning_summary_text.delta",
+        "response.reasoning_text.delta",
+    ):
+        # Surface a redacted reasoning summary to the chat UI so the user has
+        # a "thinking..." pill instead of a silent dead-air gap while the
+        # model burns reasoning tokens. Only the SUMMARY text is forwarded;
+        # raw reasoning is never persisted.
+        events.append(StreamEvent(type="thinking_delta", text=getattr(raw, "delta", "") or ""))
 
     elif event_type == "response.output_item.added":
         item = getattr(raw, "item", None)

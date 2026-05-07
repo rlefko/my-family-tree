@@ -1,9 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { MessageSquarePlus, Send, Square, Sparkles } from "lucide-react";
+import {
+  Brain,
+  Loader2,
+  MessageSquarePlus,
+  Send,
+  Sparkles,
+  Square,
+} from "lucide-react";
 import { useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import { useConversations } from "@/api/endpoints/conversations";
+import { Tooltip } from "@/components/ui/tooltip";
 import { InlineProposals } from "@/features/chat/InlineProposals";
 import { ToolCallCard } from "@/features/chat/ToolCallCard";
 import { useChatStream, type ChatTurn } from "@/features/chat/useChatStream";
@@ -14,7 +23,9 @@ export const Route = createFileRoute("/chat")({
 });
 
 function ChatPage() {
-  const { turns, busy, send, stop, newChat } = useChatStream();
+  const { turns, busy, send, stop, newChat, switchConversation, conversationId } =
+    useChatStream();
+  const conversations = useConversations();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const draftRef = useRef("");
@@ -42,87 +53,151 @@ function ChatPage() {
   }
 
   return (
-    <section className="flex h-full flex-col">
-      <header className="flex items-center justify-between border-b border-zinc-200 bg-white px-6 py-4">
-        <div>
-          <h1 className="text-xl font-semibold">Chat</h1>
-          <p className="text-xs text-zinc-500">
-            Ask about your tree. The assistant queues changes as proposals you can approve right
-            here in chat.
-          </p>
+    <section className="flex h-full">
+      <ConversationSidebar
+        conversations={conversations.data?.items ?? []}
+        loading={conversations.isLoading}
+        activeId={conversationId}
+        onSelect={(id) => void switchConversation(id)}
+        onNewChat={newChat}
+      />
+
+      <div className="flex flex-1 flex-col">
+        <header className="flex items-center justify-between border-b border-zinc-200 bg-white px-6 py-4">
+          <div>
+            <h1 className="text-xl font-semibold">Chat</h1>
+            <p className="text-xs text-zinc-500">
+              Ask about your tree. The assistant queues changes as proposals you can approve right
+              here in chat.
+            </p>
+          </div>
+        </header>
+
+        <div ref={scrollRef} className="flex-1 overflow-y-auto bg-zinc-50/50 px-4 py-6 sm:px-6">
+          {turns.length === 0 ? (
+            <EmptyState />
+          ) : (
+            <ul className="mx-auto flex max-w-3xl flex-col gap-4">
+              {turns.map((turn) => (
+                <li
+                  key={turn.id}
+                  className={cn(
+                    "flex w-full",
+                    turn.role === "user" ? "justify-end" : "justify-start",
+                  )}
+                >
+                  <Bubble turn={turn} />
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
+
+        <form
+          className="border-t border-zinc-200 bg-white px-4 py-3 sm:px-6"
+          onSubmit={(e) => {
+            e.preventDefault();
+            submit();
+          }}
+        >
+          <div className="mx-auto flex max-w-3xl items-end gap-2">
+            <textarea
+              ref={inputRef}
+              className="flex-1 resize-none rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              placeholder="Ask a question. Shift+Enter for a new line."
+              rows={1}
+              onChange={(e) => {
+                draftRef.current = e.target.value;
+                const el = e.currentTarget;
+                el.style.height = "auto";
+                el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+              }}
+              onKeyDown={onKeyDown}
+            />
+            {busy ? (
+              <button
+                type="button"
+                onClick={stop}
+                className="inline-flex items-center justify-center gap-1.5 rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm hover:bg-zinc-50"
+              >
+                <Square className="h-3.5 w-3.5" />
+                Stop
+              </button>
+            ) : (
+              <button
+                type="submit"
+                className="inline-flex items-center justify-center gap-1.5 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Send className="h-3.5 w-3.5" />
+                Send
+              </button>
+            )}
+          </div>
+        </form>
+      </div>
+    </section>
+  );
+}
+
+function ConversationSidebar({
+  conversations,
+  loading,
+  activeId,
+  onSelect,
+  onNewChat,
+}: {
+  conversations: { id: string; title: string | null; last_message_at: string | null }[];
+  loading: boolean;
+  activeId: string | null;
+  onSelect: (id: string) => void;
+  onNewChat: () => void;
+}) {
+  return (
+    <aside className="flex w-60 shrink-0 flex-col border-r border-zinc-200 bg-white">
+      <div className="border-b border-zinc-200 px-3 py-3">
         <button
           type="button"
-          onClick={newChat}
-          className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm hover:bg-zinc-50"
+          onClick={onNewChat}
+          className="flex w-full items-center justify-center gap-1.5 rounded-md border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-medium text-indigo-700 hover:bg-indigo-100"
         >
           <MessageSquarePlus className="h-3.5 w-3.5" />
           New chat
         </button>
-      </header>
-
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
-        {turns.length === 0 ? (
-          <EmptyState />
+      </div>
+      <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+        Recent
+      </div>
+      <div className="flex-1 overflow-y-auto px-1 pb-3">
+        {loading ? (
+          <div className="px-3 py-2 text-xs text-zinc-400">Loading...</div>
+        ) : conversations.length === 0 ? (
+          <div className="px-3 py-2 text-xs text-zinc-400">No conversations yet.</div>
         ) : (
-          <ul className="mx-auto flex max-w-3xl flex-col gap-4">
-            {turns.map((turn) => (
-              <li
-                key={turn.id}
-                className={cn(
-                  "flex w-full",
-                  turn.role === "user" ? "justify-end" : "justify-start",
-                )}
-              >
-                <Bubble turn={turn} />
+          <ul className="space-y-0.5">
+            {conversations.map((c) => (
+              <li key={c.id}>
+                <button
+                  type="button"
+                  onClick={() => onSelect(c.id)}
+                  className={cn(
+                    "block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-zinc-100",
+                    c.id === activeId ? "bg-indigo-50 text-indigo-900" : "text-zinc-700",
+                  )}
+                  title={c.title ?? "(untitled)"}
+                >
+                  <div className="truncate font-medium">{c.title ?? "(untitled)"}</div>
+                  {c.last_message_at ? (
+                    <div className="truncate text-[10px] text-zinc-400">
+                      {new Date(c.last_message_at).toLocaleString()}
+                    </div>
+                  ) : null}
+                </button>
               </li>
             ))}
           </ul>
         )}
       </div>
-
-      <form
-        className="border-t border-zinc-200 bg-white px-4 py-3 sm:px-6"
-        onSubmit={(e) => {
-          e.preventDefault();
-          submit();
-        }}
-      >
-        <div className="mx-auto flex max-w-3xl items-end gap-2">
-          <textarea
-            ref={inputRef}
-            className="flex-1 resize-none rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-            placeholder="Ask a question. Shift+Enter for a new line."
-            rows={1}
-            onChange={(e) => {
-              draftRef.current = e.target.value;
-              const el = e.currentTarget;
-              el.style.height = "auto";
-              el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
-            }}
-            onKeyDown={onKeyDown}
-          />
-          {busy ? (
-            <button
-              type="button"
-              onClick={stop}
-              className="inline-flex items-center justify-center gap-1.5 rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm hover:bg-zinc-50"
-            >
-              <Square className="h-3.5 w-3.5" />
-              Stop
-            </button>
-          ) : (
-            <button
-              type="submit"
-              className="inline-flex items-center justify-center gap-1.5 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Send className="h-3.5 w-3.5" />
-              Send
-            </button>
-          )}
-        </div>
-      </form>
-    </section>
+    </aside>
   );
 }
 
@@ -130,7 +205,9 @@ function Bubble({ turn }: { turn: ChatTurn }) {
   const isUser = turn.role === "user";
   const toolCalls = turn.toolCalls ?? [];
   const proposalIds = turn.proposalIds ?? [];
-  const hasContent = turn.content && turn.content.length > 0;
+  const hasContent = !!turn.content;
+  const hasThinking = !!turn.thinking;
+  const isQuiet = !hasContent && toolCalls.length === 0;
   return (
     <div
       className={cn(
@@ -142,6 +219,9 @@ function Bubble({ turn }: { turn: ChatTurn }) {
             : "rounded-bl-sm border border-zinc-200 bg-white text-zinc-900",
       )}
     >
+      {!isUser && hasThinking ? (
+        <ThinkingPill text={turn.thinking ?? ""} live={Boolean(turn.pending)} />
+      ) : null}
       {toolCalls.length > 0 ? (
         <div className="mb-2 flex flex-col gap-1">
           {toolCalls.map((call) => (
@@ -155,30 +235,44 @@ function Bubble({ turn }: { turn: ChatTurn }) {
         ) : (
           <Markdown content={turn.content} />
         )
-      ) : turn.pending && toolCalls.length === 0 ? (
-        <Pending />
+      ) : turn.pending && isQuiet ? (
+        <PendingHero hasThinking={hasThinking} />
+      ) : !isUser && isQuiet && !turn.pending ? (
+        <span className="text-xs italic text-zinc-400">(no response — try rephrasing)</span>
       ) : null}
       {!isUser && proposalIds.length > 0 ? <InlineProposals ids={proposalIds} /> : null}
     </div>
   );
 }
 
-function Pending() {
+function ThinkingPill({ text, live }: { text: string; live: boolean }) {
+  // Show only the last few lines of the reasoning summary so the bubble
+  // doesn't grow unbounded while the model deliberates.
+  const tail = text.split(/\n+/).filter(Boolean).slice(-3).join(" · ");
   return (
-    <span className="inline-flex items-center gap-1 text-zinc-400">
-      <Dot delay="0ms" />
-      <Dot delay="120ms" />
-      <Dot delay="240ms" />
-    </span>
+    <Tooltip
+      content="OpenAI's reasoning summary while it deliberates. Raw thinking is never persisted; only the summary is shown."
+      side="bottom"
+    >
+      <div
+        className={cn(
+          "mb-2 inline-flex max-w-full items-start gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-900 cursor-help",
+          live ? "animate-pulse" : "",
+        )}
+      >
+        <Brain className="mt-[1px] h-3 w-3 shrink-0 text-amber-600" />
+        <span className="line-clamp-3 break-words">{tail || "Thinking..."}</span>
+      </div>
+    </Tooltip>
   );
 }
 
-function Dot({ delay }: { delay: string }) {
+function PendingHero({ hasThinking }: { hasThinking: boolean }) {
   return (
-    <span
-      className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-400"
-      style={{ animationDelay: delay }}
-    />
+    <span className="inline-flex items-center gap-2 text-zinc-500">
+      <Loader2 className="h-3 w-3 animate-spin text-indigo-500" />
+      <span className="text-xs">{hasThinking ? "Working on it..." : "Thinking..."}</span>
+    </span>
   );
 }
 
@@ -219,3 +313,4 @@ function EmptyState() {
     </div>
   );
 }
+

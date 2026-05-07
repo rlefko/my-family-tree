@@ -5,16 +5,27 @@
  * On mount, the hook checks `localStorage` for the active conversation id;
  * if present, it fetches the persisted messages from
  * `GET /api/v1/conversations/{id}` and rehydrates the turn list so a page
- * refresh restores the thread. The first `start` SSE event tells us which
- * conversation we're in (the backend creates one when the client doesn't
- * pass one); we capture it, store it, and echo it on every subsequent
- * request so all turns share the same Conversation row.
+ * refresh / tab navigation restores the thread. The first `start` SSE event
+ * tells us which conversation we're in (the backend creates one when the
+ * client doesn't pass one); we capture it, store it, and echo it on every
+ * subsequent request so all turns share the same Conversation row.
+ *
+ * Thinking surface: OpenAI Responses-API reasoning summaries arrive as
+ * `thinking_delta` events. We accumulate them on the pending turn so the
+ * UI can render a "Thinking..." pill that updates as the model deliberates.
  */
 
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { fetchConversation, type AssistantBlock, type MessageRow } from "@/api/endpoints/conversations";
+import {
+  fetchConversation,
+  type AssistantBlock,
+  type MessageRow,
+} from "@/api/endpoints/conversations";
 import { postSSE } from "@/api/sse";
+
+const DEBUG = typeof import.meta !== "undefined" && import.meta.env?.DEV;
 
 export type ToolCall = {
   id: string;
@@ -28,6 +39,7 @@ export type ChatTurn = {
   id: string;
   role: "user" | "assistant";
   content: string;
+  thinking?: string;
   pending?: boolean;
   error?: boolean;
   toolCalls?: ToolCall[];
@@ -65,9 +77,7 @@ function turnsFromMessages(messages: MessageRow[]): ChatTurn[] {
   const turns: ChatTurn[] = [];
   for (const m of messages) {
     if (m.role === "user") {
-      const text = m.content
-        .map((b) => (b.type === "text" ? b.text : ""))
-        .join("");
+      const text = m.content.map((b) => (b.type === "text" ? b.text : "")).join("");
       turns.push({ id: m.id, role: "user", content: text });
     } else if (m.role === "assistant") {
       const turn: ChatTurn = {
@@ -102,6 +112,7 @@ function turnsFromMessages(messages: MessageRow[]): ChatTurn[] {
 }
 
 export function useChatStream() {
+  const qc = useQueryClient();
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [busy, setBusy] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(() =>
@@ -112,37 +123,35 @@ export function useChatStream() {
   const restoredRef = useRef(false);
   const userInteractedRef = useRef(false);
 
-  // On mount, hydrate the previously-active conversation from the server.
-  // The fetch is async, so we guard against three races: (a) the component
-  // unmounts mid-fetch (cancelled flag); (b) the user starts typing/sending
-  // while the fetch is in flight (userInteractedRef short-circuits the apply);
-  // (c) the rehydrate completes AFTER the user has already received some
-  // events for a new turn (we only setTurns when the local list is still
-  // empty so we never clobber in-flight state).
+  // Hydrate the previously-active conversation from the server. Three races
+  // to defend against:
+  // (a) component unmounts mid-fetch -> `cancelled` flag
+  // (b) user starts typing/sending while fetch is in flight -> userInteractedRef
+  // (c) rehydrate completes after a new turn has begun -> only setTurns when
+  //     prev list is empty, so we never clobber an in-flight pending turn.
+  const loadConversation = useCallback(async (id: string) => {
+    try {
+      const detail = await fetchConversation(id);
+      if (userInteractedRef.current) return;
+      const restored = turnsFromMessages(detail.messages);
+      if (DEBUG) console.debug("[chat] restored turns", restored.length, "from", id);
+      setTurns((prev) => (prev.length === 0 ? restored : prev));
+    } catch (e) {
+      if (DEBUG) console.warn("[chat] restore failed", e);
+      // Stale or deleted conversation; reset so the next send creates a
+      // fresh thread instead of stamping onto a server-side ghost.
+      conversationIdRef.current = null;
+      setConversationId(null);
+      storeConversationId(null);
+    }
+  }, []);
+
   useEffect(() => {
     const id = conversationIdRef.current;
     if (!id || restoredRef.current) return;
     restoredRef.current = true;
-    let cancelled = false;
-    (async () => {
-      try {
-        const detail = await fetchConversation(id);
-        if (cancelled || userInteractedRef.current) return;
-        const restored = turnsFromMessages(detail.messages);
-        setTurns((prev) => (prev.length === 0 ? restored : prev));
-      } catch {
-        if (cancelled) return;
-        // Stale or deleted conversation; reset so the next send creates a
-        // fresh thread instead of stamping onto a server-side ghost.
-        conversationIdRef.current = null;
-        setConversationId(null);
-        storeConversationId(null);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    void loadConversation(id);
+  }, [loadConversation]);
 
   // Cancel any in-flight request on unmount.
   useEffect(
@@ -164,9 +173,24 @@ export function useChatStream() {
     setConversationId(null);
     storeConversationId(null);
     setTurns([]);
-    restoredRef.current = true; // prevent re-hydrating on next render
-    userInteractedRef.current = true;
+    restoredRef.current = true;
+    userInteractedRef.current = false; // allow rehydrate again if user picks an old conversation
   }, []);
+
+  const switchConversation = useCallback(
+    async (id: string) => {
+      abortRef.current?.abort();
+      abortRef.current = null;
+      conversationIdRef.current = id;
+      setConversationId(id);
+      storeConversationId(id);
+      setTurns([]); // wipe before reload so old turns don't briefly show
+      restoredRef.current = true;
+      userInteractedRef.current = false;
+      await loadConversation(id);
+    },
+    [loadConversation],
+  );
 
   const send = useCallback(
     async (text: string) => {
@@ -184,6 +208,7 @@ export function useChatStream() {
         id: pendingId,
         role: "assistant",
         content: "",
+        thinking: "",
         pending: true,
         toolCalls: [],
         proposalIds: [],
@@ -216,6 +241,7 @@ export function useChatStream() {
           if (evt.event === "start") {
             const cid = (evt.data as { conversation_id?: string })?.conversation_id;
             if (cid && cid !== conversationIdRef.current) {
+              if (DEBUG) console.debug("[chat] new conversation_id", cid);
               conversationIdRef.current = cid;
               setConversationId(cid);
               storeConversationId(cid);
@@ -224,14 +250,12 @@ export function useChatStream() {
           setTurns((prev) => {
             const idx = prev.findIndex((t) => t.id === pendingId);
             if (idx === -1) {
-              // The pending turn was wiped (e.g., navigating mid-stream or a
-              // late rehydrate clobbered state). Re-insert it so subsequent
-              // events still have a place to land.
               const recovered: ChatTurn = applyEvent(
                 {
                   id: pendingId,
                   role: "assistant",
                   content: "",
+                  thinking: "",
                   pending: true,
                   toolCalls: [],
                   proposalIds: [],
@@ -257,6 +281,7 @@ export function useChatStream() {
           );
         } else {
           const message = (e as { message?: string }).message ?? String(e);
+          if (DEBUG) console.error("[chat] stream error", e);
           setTurns((prev) =>
             prev.map((t) =>
               t.id === pendingId
@@ -270,12 +295,15 @@ export function useChatStream() {
         abortRef.current = null;
         // Mark pending false defensively in case the stream ended without a `done` event.
         setTurns((prev) => prev.map((t) => (t.id === pendingId ? { ...t, pending: false } : t)));
+        // Refresh the sidebar so a brand-new conversation appears immediately
+        // and existing rows pick up the new last_message_at.
+        qc.invalidateQueries({ queryKey: ["conversations"] });
       }
     },
-    [busy, turns],
+    [busy, turns, qc],
   );
 
-  return { turns, busy, send, stop, newChat, conversationId };
+  return { turns, busy, send, stop, newChat, switchConversation, conversationId };
 }
 
 function applyEvent(turn: ChatTurn, type: string, data: SseEventData): ChatTurn {
@@ -283,6 +311,10 @@ function applyEvent(turn: ChatTurn, type: string, data: SseEventData): ChatTurn 
     case "text_delta": {
       const text = String(data?.text ?? "");
       return { ...turn, content: turn.content + text };
+    }
+    case "thinking_delta": {
+      const text = String(data?.text ?? "");
+      return { ...turn, thinking: (turn.thinking ?? "") + text };
     }
     case "tool_use_started": {
       const id = String(data?.id ?? "");
@@ -321,11 +353,15 @@ function applyEvent(turn: ChatTurn, type: string, data: SseEventData): ChatTurn 
     }
     case "error": {
       const message = String((data as { message?: string })?.message ?? "unknown error");
-      return { ...turn, pending: false, error: true, content: turn.content || `Error: ${message}` };
+      return {
+        ...turn,
+        pending: false,
+        error: true,
+        content: turn.content || `Error: ${message}`,
+      };
     }
     case "start":
     case "usage":
-    case "thinking_delta":
     default:
       return turn;
   }
