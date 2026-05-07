@@ -1,4 +1,4 @@
-"""Person tools: search, get, traverse."""
+"""Person tools: search, get, traverse, propose-create / update / merge."""
 
 from __future__ import annotations
 
@@ -17,8 +17,10 @@ from my_family_tree.mcp.schemas import (
     DateRangeOut,
     PersonDetail,
     PersonSummary,
+    ProposalRef,
 )
-from my_family_tree.models.enums import PersonStatus, RelType
+from my_family_tree.mcp.tools.proposals import make_proposal
+from my_family_tree.models.enums import PersonStatus, ProposalAction, RelType, SubjectType
 from my_family_tree.models.person import Alias, Person
 from my_family_tree.models.relationship import Relationship
 
@@ -199,3 +201,133 @@ def _label_for(kind: Literal["parent", "child"], gen: int) -> str:
     if gen == _GRAND:
         return f"grand{kind}"
     return f"{'great-' * (gen - _GRAND)}grand{kind}"
+
+
+# --- propose-write tools ----------------------------------------------------
+
+
+class PersonProposeCreateInput(BaseModel):
+    display_name: str = Field(min_length=1, max_length=400)
+    given_names: str | None = None
+    surname: str | None = None
+    surname_at_birth: str | None = None
+    suffix: str | None = None
+    sex: Literal["male", "female", "unknown"] = "unknown"
+    birth_text: str | None = Field(
+        default=None,
+        description="Verbatim birth-date phrase, e.g. 'April 15, 1932' or '1842'.",
+    )
+    birth_place_text: str | None = Field(
+        default=None,
+        description=(
+            "Verbatim birth place, e.g. 'Boston, MA'. "
+            "The applier looks up or queues a place row."
+        ),
+    )
+    death_text: str | None = None
+    death_place_text: str | None = None
+    is_living: bool = True
+    aliases: list[str] = Field(default_factory=list)
+    notes_md: str | None = None
+    rationale: str = Field(min_length=1, max_length=2000)
+    confidence: int = Field(default=70, ge=0, le=100)
+
+
+@registry.tool(
+    name="person_propose_create",
+    description=(
+        "Propose creation of a new person. Returns a `proposal_id`. Always call "
+        "`person_search` first to avoid duplicating an existing person."
+    ),
+    input_model=PersonProposeCreateInput,
+    output_model=ProposalRef,
+    capability=Capability.PROPOSE,
+    is_read_only=False,
+)
+async def person_propose_create(ctx: ToolContext, payload: PersonProposeCreateInput) -> ProposalRef:
+    return await make_proposal(
+        ctx,
+        action=ProposalAction.create,
+        target_type=SubjectType.person,
+        payload=payload.model_dump(exclude={"rationale", "confidence"}),
+        rationale=payload.rationale,
+        confidence=payload.confidence,
+    )
+
+
+class PersonProposeUpdateInput(BaseModel):
+    person_id: UUID
+    display_name: str | None = Field(default=None, max_length=400)
+    given_names: str | None = None
+    surname: str | None = None
+    surname_at_birth: str | None = None
+    suffix: str | None = None
+    sex: Literal["male", "female", "unknown"] | None = None
+    birth_text: str | None = None
+    birth_place_text: str | None = None
+    death_text: str | None = None
+    death_place_text: str | None = None
+    is_living: bool | None = None
+    notes_md: str | None = None
+    rationale: str = Field(min_length=1, max_length=2000)
+    confidence: int = Field(default=70, ge=0, le=100)
+
+
+@registry.tool(
+    name="person_propose_update",
+    description=(
+        "Propose an update to an existing person. Only fields you set are applied; "
+        "omitted fields are left unchanged. Use this to add a missing birth date, "
+        "fix a misspelling, etc."
+    ),
+    input_model=PersonProposeUpdateInput,
+    output_model=ProposalRef,
+    capability=Capability.PROPOSE,
+    is_read_only=False,
+)
+async def person_propose_update(ctx: ToolContext, payload: PersonProposeUpdateInput) -> ProposalRef:
+    payload_dict = payload.model_dump(exclude={"rationale", "confidence", "person_id"})
+    payload_dict = {k: v for k, v in payload_dict.items() if v is not None}
+    return await make_proposal(
+        ctx,
+        action=ProposalAction.update,
+        target_type=SubjectType.person,
+        target_id=payload.person_id,
+        payload=payload_dict,
+        rationale=payload.rationale,
+        confidence=payload.confidence,
+    )
+
+
+class PersonProposeMergeInput(BaseModel):
+    winner_id: UUID = Field(description="The person to keep.")
+    loser_id: UUID = Field(description="The person to merge into the winner.")
+    rationale: str = Field(min_length=1, max_length=2000)
+    confidence: int = Field(default=80, ge=0, le=100)
+
+
+@registry.tool(
+    name="person_propose_merge",
+    description=(
+        "Propose merging two persons into one. On approval, the loser's relationships, "
+        "events, aliases, and claims are rewritten to point at the winner; the loser "
+        "stays as `status=merged` so historical IDs still resolve."
+    ),
+    input_model=PersonProposeMergeInput,
+    output_model=ProposalRef,
+    capability=Capability.PROPOSE,
+    is_read_only=False,
+)
+async def person_propose_merge(ctx: ToolContext, payload: PersonProposeMergeInput) -> ProposalRef:
+    return await make_proposal(
+        ctx,
+        action=ProposalAction.merge,
+        target_type=SubjectType.person,
+        target_id=payload.winner_id,
+        payload={
+            "winner_id": str(payload.winner_id),
+            "loser_id": str(payload.loser_id),
+        },
+        rationale=payload.rationale,
+        confidence=payload.confidence,
+    )
