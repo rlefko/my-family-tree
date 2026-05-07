@@ -33,7 +33,13 @@ import {
   type UploadDropzoneHandle,
 } from "@/features/documents/UploadDropzone";
 import { StatusBadge } from "@/features/documents/StatusBadge";
-import { formatBytes, kindLabel } from "@/features/documents/constants";
+import {
+  DOCUMENT_KINDS,
+  DOCUMENT_STATUSES,
+  formatBytes,
+  isActiveStatus,
+  kindLabel,
+} from "@/features/documents/constants";
 import { DEFAULT_TREE_ID } from "@/lib/tree";
 import { cn } from "@/lib/utils";
 
@@ -64,16 +70,6 @@ export const Route = createFileRoute("/documents")({
     };
   },
 });
-
-const KIND_OPTIONS = ["pdf_text", "pdf_scan", "image", "text", "gedcom", "note"];
-const STATUS_OPTIONS = [
-  "pending",
-  "extracting",
-  "embedding",
-  "extracting_claims",
-  "ready",
-  "failed",
-];
 
 function DocumentsPage() {
   const search = Route.useSearch();
@@ -154,7 +150,7 @@ function DocumentsPage() {
             className="rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm"
           >
             <option value="">All kinds</option>
-            {KIND_OPTIONS.map((k) => (
+            {DOCUMENT_KINDS.map((k) => (
               <option key={k} value={k}>
                 {kindLabel(k)}
               </option>
@@ -166,7 +162,7 @@ function DocumentsPage() {
             className="rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm"
           >
             <option value="">All statuses</option>
-            {STATUS_OPTIONS.map((s) => (
+            {DOCUMENT_STATUSES.map((s) => (
               <option key={s} value={s}>
                 {s}
               </option>
@@ -225,7 +221,7 @@ function DocumentCard({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const Icon = doc.kind === "image" ? ImageIcon : FileText;
   const showReprocess = doc.status === "failed";
-  const isActive = ["pending", "extracting", "embedding", "extracting_claims"].includes(doc.status);
+  const isActive = isActiveStatus(doc.status);
 
   return (
     <Card

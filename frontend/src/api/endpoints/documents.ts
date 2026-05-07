@@ -1,13 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiFetch, type ApiError } from "@/api/client";
+import {
+  isTerminalStatus,
+  type DocumentKind,
+  type DocumentStatus,
+} from "@/features/documents/constants";
 import { env } from "@/lib/env";
 
 export type DocumentRow = {
   id: string;
-  kind: string;
+  kind: DocumentKind;
   original_filename: string;
-  status: string;
+  status: DocumentStatus;
   pages?: number | null;
   mime_type?: string | null;
   size_bytes?: number | null;
@@ -20,12 +25,12 @@ export type DocumentList = { items: DocumentRow[]; total: number };
 
 export type DocumentDetail = {
   id: string;
-  kind: string;
+  kind: DocumentKind;
   mime_type: string;
   byte_size: number;
   sha256: string;
   original_filename: string;
-  status: string;
+  status: DocumentStatus;
   pages?: number | null;
   language?: string | null;
   ocr_engine?: string | null;
@@ -72,8 +77,6 @@ export type DocumentDeleted = { id: string; deleted: boolean; orphaned_sources_c
 
 export type DocumentReprocessed = { id: string; status: string; job_id: string | null };
 
-const TERMINAL_STATUSES = new Set(["ready", "failed"]);
-
 function buildListQuery(filters?: DocumentListFilters): string {
   const params = new URLSearchParams();
   if (filters?.kind) params.set("kind", filters.kind);
@@ -99,7 +102,7 @@ export function useDocument(id: string | null | undefined) {
     enabled: Boolean(id),
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      if (status && TERMINAL_STATUSES.has(status)) return false;
+      if (status && isTerminalStatus(status)) return false;
       return 3_000;
     },
   });
