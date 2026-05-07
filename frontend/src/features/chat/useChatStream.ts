@@ -110,8 +110,15 @@ export function useChatStream() {
   const conversationIdRef = useRef<string | null>(conversationId);
   const abortRef = useRef<AbortController | null>(null);
   const restoredRef = useRef(false);
+  const userInteractedRef = useRef(false);
 
   // On mount, hydrate the previously-active conversation from the server.
+  // The fetch is async, so we guard against three races: (a) the component
+  // unmounts mid-fetch (cancelled flag); (b) the user starts typing/sending
+  // while the fetch is in flight (userInteractedRef short-circuits the apply);
+  // (c) the rehydrate completes AFTER the user has already received some
+  // events for a new turn (we only setTurns when the local list is still
+  // empty so we never clobber in-flight state).
   useEffect(() => {
     const id = conversationIdRef.current;
     if (!id || restoredRef.current) return;
@@ -120,11 +127,13 @@ export function useChatStream() {
     (async () => {
       try {
         const detail = await fetchConversation(id);
-        if (cancelled) return;
-        setTurns(turnsFromMessages(detail.messages));
+        if (cancelled || userInteractedRef.current) return;
+        const restored = turnsFromMessages(detail.messages);
+        setTurns((prev) => (prev.length === 0 ? restored : prev));
       } catch {
         if (cancelled) return;
-        // Stale or deleted conversation; reset.
+        // Stale or deleted conversation; reset so the next send creates a
+        // fresh thread instead of stamping onto a server-side ghost.
         conversationIdRef.current = null;
         setConversationId(null);
         storeConversationId(null);
@@ -156,12 +165,14 @@ export function useChatStream() {
     storeConversationId(null);
     setTurns([]);
     restoredRef.current = true; // prevent re-hydrating on next render
+    userInteractedRef.current = true;
   }, []);
 
   const send = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
       if (!trimmed || busy) return;
+      userInteractedRef.current = true;
 
       const userTurn: ChatTurn = {
         id: crypto.randomUUID(),
@@ -210,9 +221,30 @@ export function useChatStream() {
               storeConversationId(cid);
             }
           }
-          setTurns((prev) =>
-            prev.map((t) => (t.id === pendingId ? applyEvent(t, evt.event, evt.data) : t)),
-          );
+          setTurns((prev) => {
+            const idx = prev.findIndex((t) => t.id === pendingId);
+            if (idx === -1) {
+              // The pending turn was wiped (e.g., navigating mid-stream or a
+              // late rehydrate clobbered state). Re-insert it so subsequent
+              // events still have a place to land.
+              const recovered: ChatTurn = applyEvent(
+                {
+                  id: pendingId,
+                  role: "assistant",
+                  content: "",
+                  pending: true,
+                  toolCalls: [],
+                  proposalIds: [],
+                },
+                evt.event,
+                evt.data,
+              );
+              return [...prev, recovered];
+            }
+            const next = prev.slice();
+            next[idx] = applyEvent(prev[idx], evt.event, evt.data);
+            return next;
+          });
         }
       } catch (e) {
         if ((e as { name?: string }).name === "AbortError") {

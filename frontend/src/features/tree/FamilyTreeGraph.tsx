@@ -13,7 +13,9 @@ import ReactFlow, {
   BackgroundVariant,
   ConnectionLineType,
   Controls,
+  Handle,
   MarkerType,
+  Position,
   type Edge,
   type Node,
   type NodeProps,
@@ -43,11 +45,28 @@ function PersonCard({ data, selected }: PersonCardProps) {
   return (
     <div
       className={cn(
-        "rounded-lg border bg-white px-3 py-2 text-xs shadow-sm",
+        "relative rounded-lg border bg-white px-3 py-2 text-xs shadow-sm",
         selected ? "border-indigo-500 ring-2 ring-indigo-200" : "border-zinc-200",
       )}
       style={{ width: NODE_WIDTH }}
     >
+      {/* Top edges connect into this node (children of a parent_of edge); */}
+      {/* bottom edges connect out (this person is the subject of a parent_of edge); */}
+      {/* left/right are used for spouse_of, partner_of, sibling_of pairs. */}
+      <Handle type="target" position={Position.Top} className="!h-2 !w-2 !bg-zinc-400" />
+      <Handle type="source" position={Position.Bottom} className="!h-2 !w-2 !bg-zinc-400" />
+      <Handle
+        id="left"
+        type="source"
+        position={Position.Left}
+        className="!h-2 !w-2 !bg-zinc-400"
+      />
+      <Handle
+        id="right"
+        type="target"
+        position={Position.Right}
+        className="!h-2 !w-2 !bg-zinc-400"
+      />
       <div className="flex items-start justify-between gap-2">
         <div className="font-medium text-zinc-900 leading-tight">{person.display_name}</div>
         <span
@@ -62,7 +81,11 @@ function PersonCard({ data, selected }: PersonCardProps) {
       <div className="mt-1 text-[11px] text-zinc-500">
         {person.birth_text ? <span>b. {person.birth_text}</span> : null}
         {person.birth_text && (person.death_text || !person.is_living) ? " - " : null}
-        {person.death_text ? <span>d. {person.death_text}</span> : !person.is_living && !person.birth_text ? <span>deceased</span> : null}
+        {person.death_text ? (
+          <span>d. {person.death_text}</span>
+        ) : !person.is_living && !person.birth_text ? (
+          <span>deceased</span>
+        ) : null}
       </div>
     </div>
   );
