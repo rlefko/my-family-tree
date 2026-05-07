@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from datetime import UTC
 from typing import Any
 from uuid import UUID
 
@@ -27,6 +28,8 @@ from my_family_tree.ingest import (
 )
 from my_family_tree.ingest.chunking import chunk_text
 from my_family_tree.ingest.image import ocr_image
+from my_family_tree.llm.vision_client import VISION_PAGE_PROMPT, VisionClient
+from my_family_tree.llm.vision_ledger import VisionLedger
 from my_family_tree.models.chunk import Chunk
 from my_family_tree.models.document import Document, DocumentText
 from my_family_tree.models.enums import (
@@ -52,9 +55,11 @@ PIPELINE_STEPS: tuple[str, ...] = (
 @dataclass(slots=True)
 class PipelineDeps:
     """External services threaded through every step. Unit tests pass a
-    minimal `PipelineDeps(embeddings=None)` to skip remote calls."""
+    minimal `PipelineDeps()` to skip remote calls."""
 
     embeddings: EmbeddingsClient | None = None
+    vision: VisionClient | None = None
+    vision_ledger: VisionLedger | None = None
 
 
 @dataclass(slots=True)
@@ -135,7 +140,6 @@ def _status_for(step: str) -> ProcessingStatus:
 async def _extract_text(
     session: AsyncSession, doc: Document, storage: ObjectStore, deps: PipelineDeps
 ) -> None:
-    del deps
     raw = await storage.get(doc.storage_key)
     if doc.kind == DocumentKind.pdf_text:
         pages = pdf_extractor.extract_pages(raw)
@@ -181,9 +185,10 @@ async def _extract_text(
         )
         doc.ocr_engine = result.engine
         doc.pages = 1
+        await _extract_visual(session, doc, [(1, raw)], deps)
     elif doc.kind == DocumentKind.pdf_scan:
-        page_count = 0
-        for page_num, png_bytes in pdf_extractor.render_pages(raw):
+        page_images: list[tuple[int, bytes]] = list(pdf_extractor.render_pages(raw))
+        for page_num, png_bytes in page_images:
             result = ocr_image(png_bytes)
             session.add(
                 DocumentText(
@@ -194,9 +199,9 @@ async def _extract_text(
                 )
             )
             doc.ocr_engine = result.engine
-            page_count = page_num
-        if page_count:
-            doc.pages = page_count
+        if page_images:
+            doc.pages = page_images[-1][0]
+        await _extract_visual(session, doc, page_images, deps)
 
 
 async def _chunk(
@@ -224,6 +229,57 @@ async def _chunk(
                 )
             )
         seq_offset += len(chunks)
+
+
+async def _extract_visual(
+    session: AsyncSession,
+    doc: Document,
+    page_images: list[tuple[int, bytes]],
+    deps: PipelineDeps,
+) -> None:
+    """Vision-LLM sub-step. Calls the vision provider once per page, persists
+    the description as a DocumentText with extraction_method=vision_llm, and
+    updates the in-memory ledger. Skipped silently when vision is unavailable
+    or the daily cap has been hit."""
+    if deps.vision is None or deps.vision_ledger is None:
+        return
+    today = utcnow().astimezone(UTC).date()
+    if not deps.vision_ledger.under_cap(today):
+        log.info("vision.skip", reason="cap_exceeded", document_id=str(doc.id))
+        return
+    receipts: list[dict[str, Any]] = list((doc.meta_json or {}).get("vision_calls", []))
+    for page_num, image_bytes in page_images:
+        if not deps.vision_ledger.under_cap(today):
+            log.info("vision.cap_hit_mid_doc", document_id=str(doc.id), page=page_num)
+            break
+        try:
+            description = await deps.vision.describe_page(
+                image_bytes, prompt=VISION_PAGE_PROMPT
+            )
+        except Exception as e:  # log and continue; one bad page does not fail the doc
+            log.warning(
+                "vision.page_failed",
+                document_id=str(doc.id),
+                page=page_num,
+                error=str(e),
+            )
+            continue
+        deps.vision_ledger.record(today, description.cost_usd)
+        receipts.append(
+            {"page": page_num, "cost_usd": description.cost_usd, "model": description.model}
+        )
+        if description.text.strip():
+            session.add(
+                DocumentText(
+                    document_id=doc.id,
+                    page=page_num,
+                    content=description.text,
+                    extraction_method=ExtractionMethod.vision_llm,
+                )
+            )
+    meta = dict(doc.meta_json or {})
+    meta["vision_calls"] = receipts
+    doc.meta_json = meta
 
 
 async def _embed(

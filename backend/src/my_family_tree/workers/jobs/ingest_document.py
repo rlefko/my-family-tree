@@ -14,7 +14,11 @@ log = get_logger(__name__)
 async def ingest_document(ctx: dict[str, Any], document_id: str) -> dict[str, Any]:
     doc_uuid = UUID(document_id)
     log.info("ingest.start", document_id=document_id)
-    deps = PipelineDeps(embeddings=ctx.get("embeddings_client"))
+    deps = PipelineDeps(
+        embeddings=ctx.get("embeddings_client"),
+        vision=ctx.get("vision_client"),
+        vision_ledger=ctx.get("vision_ledger"),
+    )
     state = await run_pipeline(
         ctx["session_factory"],
         doc_uuid,
