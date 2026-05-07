@@ -33,6 +33,7 @@ from my_family_tree.models.enums import (
 from my_family_tree.models.event import Event, EventParticipant
 from my_family_tree.models.person import Person
 from my_family_tree.models.place import Place
+from my_family_tree.models.proposal import Proposal
 from my_family_tree.models.relationship import Relationship
 from my_family_tree.models.source import Source
 from my_family_tree.resolve.merge import merge_persons
@@ -275,14 +276,9 @@ async def _apply_create_relationship(
     actor: str,
     conversation_id: UUID | None,
 ) -> UUID:
-    subject_id = UUID(payload["subject_id"])
-    object_id = UUID(payload["object_id"])
+    subject_id = await _resolve_person_ref(session, proposal.tree_id, payload["subject_id"])
+    object_id = await _resolve_person_ref(session, proposal.tree_id, payload["object_id"])
     rel_type = RelType(payload["type"])
-
-    for pid in (subject_id, object_id):
-        person = await session.get(Person, pid)
-        if person is None or person.tree_id != proposal.tree_id:
-            raise NotFoundError(f"person {pid} not found")
 
     rel = Relationship(
         tree_id=proposal.tree_id,
@@ -377,10 +373,11 @@ async def _apply_create_event(
     await session.flush()
 
     for participant in payload.get("participants", []):
+        person_id = await _resolve_person_ref(session, proposal.tree_id, participant["person_id"])
         session.add(
             EventParticipant(
                 event_id=event.id,
-                person_id=UUID(participant["person_id"]),
+                person_id=person_id,
                 role=participant["role"],
             )
         )
@@ -559,6 +556,44 @@ async def _apply_resolve_conflict(session: AsyncSession, proposal: Any, actor: s
 # ----------------------------------------------------------------------------
 # helpers
 # ----------------------------------------------------------------------------
+
+
+async def _resolve_person_ref(session: AsyncSession, tree_id: UUID, raw: str | UUID) -> UUID:
+    """A relationship or event participant can reference a person either by
+    their canonical `person.id` (if the person already exists) or by the
+    `proposal_id` of a still-pending or recently-applied person create proposal
+    in the same batch (since the agent wires up edges in the same turn it
+    proposes the people, before the user has approved anything).
+
+    We try the canonical row first, then fall back to looking up the proposal
+    and using its `target_id`. Either yields a real person id; if neither
+    resolves, we raise NotFoundError so the failure surfaces on the user's
+    Approve click rather than later as a constraint violation."""
+    pid = UUID(str(raw))
+    person = await session.get(Person, pid)
+    if person is not None and person.tree_id == tree_id:
+        # Follow merge redirects so we never edge to a tombstoned row.
+        while person.status == PersonStatus.merged and person.merged_into_id is not None:
+            target = await session.get(Person, person.merged_into_id)
+            if target is None:
+                break
+            person = target
+        return person.id
+
+    proposal = await session.get(Proposal, pid)
+    if (
+        proposal is not None
+        and proposal.tree_id == tree_id
+        and proposal.target_type == SubjectType.person
+        and proposal.action == ProposalAction.create
+        and proposal.target_id is not None
+    ):
+        return proposal.target_id
+
+    raise NotFoundError(
+        f"person reference {pid} did not resolve to a canonical person or applied "
+        f"create-person proposal in tree {tree_id}"
+    )
 
 
 def _parse_date(text: str | None) -> DateRange:

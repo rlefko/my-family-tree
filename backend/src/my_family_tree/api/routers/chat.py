@@ -8,12 +8,17 @@ one) and an `AgentRun` row for the turn. The agent_run_id is carried into
 the `ToolContext` so every proposal the agent emits is linked back to the
 chat turn that produced it. At approve time, the applier reads
 `agent_run.conversation_id` to dedup the synthetic chat `Source` per
-conversation rather than collapsing every turn onto one row."""
+conversation rather than collapsing every turn onto one row.
+
+When a turn completes, both the user prompt and the assistant response are
+persisted as `Message` rows so the chat UI can rehydrate the thread on page
+reload via `GET /api/v1/conversations/{id}`."""
 
 from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
 from typing import Any, Literal
 from uuid import UUID
 
@@ -27,7 +32,7 @@ from my_family_tree.api.deps import LLMDep, SettingsDep
 from my_family_tree.core.logging import get_logger
 from my_family_tree.core.time import utcnow
 from my_family_tree.db.session import session_scope
-from my_family_tree.llm.base import Message, TextBlock
+from my_family_tree.llm.base import Message as LLMMessage, TextBlock
 from my_family_tree.mcp.host import ToolContext, ToolHost
 from my_family_tree.mcp.registry import Capability, get_registry
 from my_family_tree.mcp.tools import (  # noqa: F401  ensure side-effect imports happen
@@ -45,7 +50,8 @@ from my_family_tree.mcp.tools import (  # noqa: F401  ensure side-effect imports
 )
 from my_family_tree.models.agent_run import AgentRun
 from my_family_tree.models.conversation import Conversation
-from my_family_tree.models.enums import AgentRole, RunStatus
+from my_family_tree.models.enums import AgentRole, MessageRole, RunStatus
+from my_family_tree.models.message import Message
 from my_family_tree.models.tree import Tree
 
 DEFAULT_TREE_NAME = "My Family Tree"
@@ -78,6 +84,73 @@ class ChatResponse(BaseModel):
     tool_calls: list[dict[str, Any]] = Field(default_factory=list)
 
 
+@dataclass
+class _TurnAggregator:
+    """Collects agent events into a single `(text, tool_calls, proposal_ids,
+    usage)` snapshot we can persist on stream end."""
+
+    text_parts: list[str] = field(default_factory=list)
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    proposal_ids: list[str] = field(default_factory=list)
+    usage: dict[str, Any] = field(default_factory=dict)
+    tokens_used: int = 0
+    tool_calls_used: int = 0
+    error_message: str | None = None
+
+    def consume(self, evt: ChatTurnEvent) -> None:  # noqa: PLR0912  one branch per event type
+        if evt.type == "text_delta":
+            self.text_parts.append(str(evt.payload.get("text") or ""))
+        elif evt.type == "tool_use_started":
+            self.tool_calls.append(
+                {
+                    "type": "tool_use",
+                    "id": str(evt.payload.get("id") or ""),
+                    "name": str(evt.payload.get("name") or ""),
+                    "input": None,
+                    "output": None,
+                    "is_error": False,
+                }
+            )
+        elif evt.type == "tool_use_finished":
+            tid = str(evt.payload.get("id") or "")
+            for call in self.tool_calls:
+                if call["id"] == tid:
+                    if "input" in evt.payload:
+                        call["input"] = evt.payload.get("input")
+                    if "name" in evt.payload and not call.get("name"):
+                        call["name"] = str(evt.payload.get("name") or "")
+                    break
+        elif evt.type == "tool_result":
+            tid = str(evt.payload.get("tool_use_id") or "")
+            for call in self.tool_calls:
+                if call["id"] == tid:
+                    call["output"] = evt.payload.get("output")
+                    call["is_error"] = bool(evt.payload.get("is_error", False))
+                    break
+        elif evt.type == "usage":
+            self.usage = dict(evt.payload)
+        elif evt.type == "done":
+            self.usage = evt.payload.get("usage", self.usage) or self.usage
+            self.proposal_ids = [str(pid) for pid in evt.payload.get("proposal_ids", []) or []]
+            self.tokens_used = int(evt.payload.get("tokens_used", 0) or 0)
+            self.tool_calls_used = int(evt.payload.get("tool_calls_used", 0) or 0)
+        elif evt.type == "error":
+            self.error_message = str(evt.payload.get("message") or "")
+
+    def assistant_content_json(self) -> list[dict[str, Any]]:
+        """Build the saved content_json for the assistant Message. Tool calls
+        come first (in the order they happened), then the final text, then a
+        `proposals_summary` block when proposals were queued. The frontend
+        rehydrator reverses this to repopulate the bubble."""
+        blocks: list[dict[str, Any]] = list(self.tool_calls)
+        text = "".join(self.text_parts)
+        if text:
+            blocks.append({"type": "text", "text": text})
+        if self.proposal_ids:
+            blocks.append({"type": "proposals_summary", "proposal_ids": self.proposal_ids})
+        return blocks
+
+
 async def _ensure_conversation_and_run(
     request: Request,
     *,
@@ -88,11 +161,7 @@ async def _ensure_conversation_and_run(
     provider: str,
 ) -> tuple[UUID, UUID]:
     """Materialize a `Conversation` (if absent) and an `AgentRun` for this
-    turn. Returns the resolved `(conversation_id, agent_run_id)`.
-
-    The conversation is the durable thread the user sees; the agent run is the
-    per-turn record that proposals link to so provenance writes can find their
-    originating thread at apply time."""
+    turn. Returns the resolved `(conversation_id, agent_run_id)`."""
     session_factory = request.app.state.session_factory
     async with session_scope(session_factory) as session:
         tree = await session.get(Tree, tree_id)
@@ -113,6 +182,8 @@ async def _ensure_conversation_and_run(
                 session.add(conv)
                 await session.flush()
         conv.last_message_at = utcnow()
+        if conv.title is None and goal:
+            conv.title = goal[:80]
 
         run = AgentRun(
             conversation_id=conversation_id,
@@ -154,14 +225,53 @@ def _agent_for_request(
     )
 
 
-def _build_messages(req: ChatRequest) -> list[Message]:
-    messages: list[Message] = []
+def _build_messages(req: ChatRequest) -> list[LLMMessage]:
+    messages: list[LLMMessage] = []
     for turn in req.history:
         messages.append(
-            Message(role=turn.role, content=[TextBlock(type="text", text=turn.content)])
+            LLMMessage(role=turn.role, content=[TextBlock(type="text", text=turn.content)])
         )
-    messages.append(Message(role="user", content=[TextBlock(type="text", text=req.message)]))
+    messages.append(LLMMessage(role="user", content=[TextBlock(type="text", text=req.message)]))
     return messages
+
+
+async def _persist_turn(
+    request: Request,
+    *,
+    conversation_id: UUID,
+    user_text: str,
+    aggregator: _TurnAggregator,
+    model: str,
+    provider: str,
+) -> None:
+    """Write the user prompt and the assistant response as `Message` rows.
+    Called from the SSE `finally` block and from the JSON `/chat` handler so
+    both paths produce the same persistent record."""
+    session_factory = request.app.state.session_factory
+    async with session_scope(session_factory) as session:
+        user_msg = Message(
+            conversation_id=conversation_id,
+            role=MessageRole.user,
+            content_json=[{"type": "text", "text": user_text}],
+        )
+        session.add(user_msg)
+        await session.flush()
+
+        usage = aggregator.usage or {}
+        assistant_msg = Message(
+            conversation_id=conversation_id,
+            role=MessageRole.assistant,
+            content_json=aggregator.assistant_content_json(),
+            model=model,
+            provider=provider,
+            input_tokens=int(usage.get("input_tokens") or 0) or None,
+            output_tokens=int(usage.get("output_tokens") or 0) or None,
+            cached_input_tokens=int(usage.get("cached_input_tokens") or 0) or None,
+            reasoning_tokens=int(usage.get("reasoning_tokens") or 0) or None,
+            parent_message_id=user_msg.id,
+        )
+        session.add(assistant_msg)
+        await session.flush()
 
 
 async def _finalize_run(
@@ -207,54 +317,42 @@ async def chat(
         provider=provider.name,
     )
     agent = _agent_for_request(req, request, llm, agent_run_id=agent_run_id)
-    text_parts: list[str] = []
-    tool_calls: list[dict[str, Any]] = []
-    proposal_ids: list[UUID] = []
-    usage: dict[str, Any] = {}
-    tokens_used = 0
-    tool_calls_used = 0
-    error_message: str | None = None
+    aggregator = _TurnAggregator()
 
     async for evt in agent.run_turn(_build_messages(req)):
-        if evt.type == "text_delta":
-            text_parts.append(evt.payload.get("text", ""))
-        elif evt.type == "tool_use_finished":
-            tool_calls.append({"id": evt.payload.get("id"), "name": evt.payload.get("name")})
-        elif evt.type == "tool_result":
-            for call in tool_calls:
-                if call["id"] == evt.payload.get("tool_use_id"):
-                    call["output"] = evt.payload.get("output")
-                    call["is_error"] = evt.payload.get("is_error", False)
-                    break
-        elif evt.type == "usage":
-            usage = evt.payload
-        elif evt.type == "done":
-            usage = evt.payload.get("usage", usage) or usage
-            proposal_ids = [UUID(pid) for pid in evt.payload.get("proposal_ids", [])]
-            tokens_used = int(evt.payload.get("tokens_used", 0))
-            tool_calls_used = int(evt.payload.get("tool_calls_used", 0))
-        elif evt.type == "error":
-            error_message = str(evt.payload.get("message", ""))
-            log.warning("chat.agent_error", message=error_message)
+        aggregator.consume(evt)
+        if evt.type == "error":
+            log.warning("chat.agent_error", message=aggregator.error_message)
 
+    await _persist_turn(
+        request,
+        conversation_id=conversation_id,
+        user_text=req.message,
+        aggregator=aggregator,
+        model=agent.model,
+        provider=agent.provider.name,
+    )
     await _finalize_run(
         request,
         agent_run_id=agent_run_id,
-        status=RunStatus.failed if error_message else RunStatus.completed,
-        error=error_message,
-        tokens_used=tokens_used,
-        tool_calls_used=tool_calls_used,
+        status=RunStatus.failed if aggregator.error_message else RunStatus.completed,
+        error=aggregator.error_message,
+        tokens_used=aggregator.tokens_used,
+        tool_calls_used=aggregator.tool_calls_used,
     )
 
     return ChatResponse(
-        text="".join(text_parts),
+        text="".join(aggregator.text_parts),
         model=agent.model,
         provider=agent.provider.name,
         conversation_id=conversation_id,
         agent_run_id=agent_run_id,
-        usage=usage,
-        proposal_ids=proposal_ids,
-        tool_calls=tool_calls,
+        usage=aggregator.usage,
+        proposal_ids=[UUID(pid) for pid in aggregator.proposal_ids],
+        tool_calls=[
+            {"id": c["id"], "name": c["name"], "input": c.get("input"), "output": c.get("output")}
+            for c in aggregator.tool_calls
+        ],
     )
 
 
@@ -287,29 +385,31 @@ async def chat_stream(
                 "agent_run_id": str(agent_run_id),
             },
         )
-        tokens_used = 0
-        tool_calls_used = 0
-        error_message: str | None = None
+        aggregator = _TurnAggregator()
         try:
             async for evt in agent.run_turn(_build_messages(req)):
-                if evt.type == "done":
-                    tokens_used = int(evt.payload.get("tokens_used", 0))
-                    tool_calls_used = int(evt.payload.get("tool_calls_used", 0))
-                elif evt.type == "error":
-                    error_message = str(evt.payload.get("message", ""))
+                aggregator.consume(evt)
                 yield _sse(evt.type, _augment(evt))
         except Exception as e:  # pragma: no cover  defensive
             log.exception("chat.stream_unhandled")
-            error_message = str(e)
+            aggregator.error_message = str(e)
             yield _sse("error", {"message": str(e)})
         finally:
+            await _persist_turn(
+                request,
+                conversation_id=conversation_id,
+                user_text=req.message,
+                aggregator=aggregator,
+                model=agent.model,
+                provider=agent.provider.name,
+            )
             await _finalize_run(
                 request,
                 agent_run_id=agent_run_id,
-                status=RunStatus.failed if error_message else RunStatus.completed,
-                error=error_message,
-                tokens_used=tokens_used,
-                tool_calls_used=tool_calls_used,
+                status=RunStatus.failed if aggregator.error_message else RunStatus.completed,
+                error=aggregator.error_message,
+                tokens_used=aggregator.tokens_used,
+                tool_calls_used=aggregator.tool_calls_used,
             )
 
     return EventSourceResponse(event_stream())

@@ -6,7 +6,7 @@ from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 
 from my_family_tree.core.dates import DatePrecision
 from my_family_tree.core.errors import NotFoundError
@@ -39,29 +39,59 @@ class PersonSearchOutput(BaseModel):
 
 @registry.tool(
     name="person_search",
-    description="Search persons by name with trigram similarity. Returns up to `limit` matches.",
+    description=(
+        "Search persons by name. Matches on display name, surname, given names, "
+        "and aliases using case-insensitive substring AND trigram similarity, so "
+        "misspellings and partial names still find the right person. Returns up "
+        "to `limit` matches ordered by similarity."
+    ),
     input_model=PersonSearchInput,
     output_model=PersonSearchOutput,
     capability=Capability.READ,
 )
 async def person_search(ctx: ToolContext, payload: PersonSearchInput) -> PersonSearchOutput:
+    """Hybrid name lookup: a substring match catches simple cases instantly and
+    a trigram similarity match handles typos/partial spellings. Aliases are
+    folded into the union so married/maiden names both resolve."""
     async with session_scope(ctx.session_factory) as session:
-        stmt = select(Person).where(Person.tree_id == ctx.tree_id)
+        query = payload.query.strip()
+        like = f"%{query}%"
+        # Trigram similarity threshold: 0.3 is permissive enough to surface
+        # "Jon" -> "John" but tight enough to filter out unrelated rows on a
+        # populated tree. Tune via Settings later.
+        threshold = 0.3
+        sim = func.greatest(
+            func.similarity(Person.display_name, query),
+            func.similarity(func.coalesce(Person.surname, ""), query),
+            func.similarity(func.coalesce(Person.given_names, ""), query),
+        )
+
+        # Pull alias matches separately (the alias table joins back to person).
+        alias_stmt = (
+            select(Alias.person_id)
+            .where(Alias.name.ilike(like))
+            .union(
+                select(Alias.person_id).where(func.similarity(Alias.name, query) >= threshold),
+            )
+        )
+
+        stmt = select(Person, sim.label("score")).where(Person.tree_id == ctx.tree_id)
         if not payload.include_merged:
             stmt = stmt.where(Person.status == PersonStatus.active)
-        # Simple ILIKE; trigram operators (% / similarity()) require a separate
-        # SQLAlchemy expression and the GIN index from the migration. For v1
-        # ILIKE is good enough and uses the trigram index for prefix matches.
-        like = f"%{payload.query}%"
         stmt = stmt.where(
             or_(
                 Person.display_name.ilike(like),
                 Person.surname.ilike(like),
                 Person.given_names.ilike(like),
+                Person.surname_at_birth.ilike(like),
+                sim >= threshold,
+                Person.id.in_(alias_stmt),
             )
-        ).limit(payload.limit)
-        rows = (await session.execute(stmt)).scalars().all()
-        return PersonSearchOutput(results=[_to_summary(p) for p in rows])
+        )
+        stmt = stmt.order_by(sim.desc()).limit(payload.limit)
+
+        rows = list((await session.execute(stmt)).all())
+        return PersonSearchOutput(results=[_to_summary(p) for p, _ in rows])
 
 
 class PersonGetInput(BaseModel):
