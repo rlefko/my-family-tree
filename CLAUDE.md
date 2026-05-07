@@ -78,6 +78,8 @@ A personal genealogy research workbench. Upload documents, extract evidence, que
 - `vector(3072)` cannot be HNSW-indexed (2000-dim cap). Always query `embedding_half halfvec(3072)`.
 - `tree_id` column on every domain row even though we are single-user. Do not remove it; it makes the eventual multi-user transition trivial.
 - The chat agent has no canonical-write tools. All writes go through `proposal` rows that the user (or an explicit auto-approve policy, off by default) applies via the `/proposals/{id}/approve` API endpoint. Do not try to add MCP tools that bypass this.
+- When you edit `backend/src/my_family_tree/agent/system_prompt.py`, bump `CHAT_PROMPT_VERSION`. It is the inference cache key; without a bump, cached completions don't reflect prompt changes.
+- `AsyncSession` is not concurrency-safe. Don't `asyncio.gather` two awaits that share the same session. Either await sequentially or open a second session.
 
 ## Don't
 
