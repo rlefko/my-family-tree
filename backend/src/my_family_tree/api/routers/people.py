@@ -359,6 +359,62 @@ async def add_relationship(
     return {"proposal_id": str(proposal.id), "relationship_id": str(target_id)}
 
 
+class UpdatePersonBody(BaseModel):
+    """Patch a single person. Only fields present in the body are touched.
+    Empty strings clear the value; null is treated as 'no change'."""
+
+    display_name: str | None = None
+    given_names: str | None = None
+    surname: str | None = None
+    surname_at_birth: str | None = None
+    suffix: str | None = None
+    sex: str | None = None
+    birth_text: str | None = None
+    death_text: str | None = None
+    is_living: bool | None = None
+    notes_md: str | None = None
+
+
+@router.patch("/people/{person_id}", response_model=Any)
+async def update_person(
+    person_id: UUID, body: UpdatePersonBody, session: SessionDep
+) -> dict[str, str]:
+    """Apply a field-level edit from the People drawer. Auto-approved through
+    the proposal flow so each edit becomes a Claim with chat-source provenance."""
+    person = await session.get(Person, person_id)
+    if person is None:
+        raise NotFoundError(f"person {person_id} not found")
+
+    payload: dict[str, Any] = {
+        k: v
+        for k, v in body.model_dump(exclude_unset=True).items()
+        if v is not None or k in {"birth_text", "death_text", "notes_md"}
+    }
+    if not payload:
+        raise ValidationError("update body must include at least one field")
+
+    proposal = Proposal(
+        tree_id=person.tree_id,
+        action=ProposalAction.update,
+        target_type=SubjectType.person,
+        target_id=person.id,
+        payload_json=payload,
+        rationale_md="Field edit from the People drawer.",
+        confidence=100,
+        status=ProposalStatus.pending,
+    )
+    session.add(proposal)
+    await session.flush()
+    target_id = await apply_proposal(session, proposal, actor="user")
+    proposal.status = ProposalStatus.approved
+    proposal.target_id = target_id
+    proposal.approved_at = utcnow()
+    proposal.applied_at = utcnow()
+    proposal.approved_by = "user"
+    await session.flush()
+    return {"proposal_id": str(proposal.id), "person_id": str(target_id)}
+
+
 class AddNoteBody(BaseModel):
     notes_md: str
 
