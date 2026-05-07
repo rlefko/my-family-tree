@@ -260,9 +260,7 @@ class WikidataProvider(GenealogyProvider):
         *,
         params: dict[str, str] | None = None,
     ) -> object:
-        return await request_json(
-            self.client, "GET", url, label="wikidata", params=params
-        )
+        return await request_json(self.client, "GET", url, label="wikidata", params=params)
 
     async def aclose(self) -> None:
         await self.client.aclose()

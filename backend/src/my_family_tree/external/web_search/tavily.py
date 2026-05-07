@@ -35,7 +35,9 @@ class TavilyProvider(WebSearchProvider):
             "include_answer": False,
             "include_raw_content": False,
         }
-        payload = await request_json(self.client, "POST", TAVILY_SEARCH_URL, label="tavily", json=body)
+        payload = await request_json(
+            self.client, "POST", TAVILY_SEARCH_URL, label="tavily", json=body
+        )
         if not isinstance(payload, dict):
             raise ExternalProviderError("tavily response was not an object")
         results = payload.get("results")
