@@ -89,6 +89,32 @@ so the same thread keeps reusing the same Source row.
 - **Conflict resolver** (`agent/conflict_resolver.py`): given a conflict ID,
   produces a single `proposal(action='resolve_conflict')`. v2 work.
 
+## External research
+
+The chat agent reaches beyond uploaded documents through a small set of
+optional read tools (Tavily / Brave web search; WikiTree, Wikidata, and
+FamilySearch genealogy lookups) plus `external_index_url` for adding the
+fetched text to the searchable knowledge base. Every provider is opt-in
+via env vars; absent providers are simply hidden from the agent's tool
+catalog so the agent never wastes a call on something that cannot work.
+
+A typical external-research turn:
+
+```
+genealogy_search / web_search
+   |
+   v
+external_index_url(<url>)        creates a Document(kind=web) + Source
+   |                              and runs the ingest pipeline so the
+   v                              page is vector-searchable thereafter
+person_propose_create / event_propose_create / ...
+   rationale_md cites: "Source: web doc <document_id> (<url>): <excerpt>"
+```
+
+All fetches go through SSRF, response-size, and content-type guards in
+`external/http.py`. See [external-research.md](external-research.md) for
+the full provider matrix, configuration, and worked examples.
+
 ## "I need user input on X"
 
 The agent calls `request_user_input(reason, options?, schema?)`. v1.5 returns

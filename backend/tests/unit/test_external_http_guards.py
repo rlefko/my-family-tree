@@ -148,10 +148,13 @@ async def test_fetch_text_revalidates_redirect_target() -> None:
         def _next_resolution(_host: str) -> Any:
             return next(addrs)
 
-        with patch(
-            "my_family_tree.external.http._resolve_all",
-            side_effect=_next_resolution,
-        ), pytest.raises(UnsafeUrlError):
+        with (
+            patch(
+                "my_family_tree.external.http._resolve_all",
+                side_effect=_next_resolution,
+            ),
+            pytest.raises(UnsafeUrlError),
+        ):
             await fetch_text(client, "https://public.example.com/jump")
     finally:
         await client.aclose()
