@@ -21,9 +21,8 @@ import { InlineProposals } from "@/features/chat/InlineProposals";
 import { ToolCallCard } from "@/features/chat/ToolCallCard";
 import { useChatStream, type ChatTurn } from "@/features/chat/ChatStreamProvider";
 import { MAX_UPLOAD_BYTES, formatBytes } from "@/features/documents/constants";
+import { DEFAULT_TREE_ID } from "@/lib/tree";
 import { cn } from "@/lib/utils";
-
-const TREE_ID = "00000000-0000-0000-0000-000000000000";
 
 export const Route = createFileRoute("/chat")({
   component: ChatPage,
@@ -71,7 +70,7 @@ function ChatPage() {
       ]);
       uploadDocumentRequest({
         file,
-        treeId: TREE_ID,
+        treeId: DEFAULT_TREE_ID,
         onProgress: (loaded, total) => {
           setAttachments((prev) =>
             prev.map((a) =>

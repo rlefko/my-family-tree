@@ -29,6 +29,7 @@ import {
   type MessageRow,
 } from "@/api/endpoints/conversations";
 import { postSSE } from "@/api/sse";
+import { DEFAULT_TREE_ID } from "@/lib/tree";
 
 const DEBUG = typeof import.meta !== "undefined" && import.meta.env?.DEV;
 
@@ -51,7 +52,6 @@ export type ChatTurn = {
   proposalIds?: string[];
 };
 
-const TREE_ID = "00000000-0000-0000-0000-000000000000";
 const STORAGE_KEY = "mft.activeConversation";
 
 type SseEventData = Record<string, unknown> & { text?: string };
@@ -268,7 +268,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
         for await (const evt of postSSE<SseEventData>(
           "/api/v1/chat/stream",
           {
-            tree_id: TREE_ID,
+            tree_id: DEFAULT_TREE_ID,
             message: wireMessage,
             history: historySnapshot,
             conversation_id: conversationIdRef.current,

@@ -34,9 +34,8 @@ import {
 } from "@/features/documents/UploadDropzone";
 import { StatusBadge } from "@/features/documents/StatusBadge";
 import { formatBytes, kindLabel } from "@/features/documents/constants";
+import { DEFAULT_TREE_ID } from "@/lib/tree";
 import { cn } from "@/lib/utils";
-
-const TREE_ID = "00000000-0000-0000-0000-000000000000";
 
 type DocumentsSearch = {
   id?: string;
@@ -202,7 +201,7 @@ function DocumentsPage() {
         )}
       </div>
 
-      <UploadDropzone ref={dropzone} treeId={TREE_ID} />
+      <UploadDropzone ref={dropzone} treeId={DEFAULT_TREE_ID} />
       <DocumentDrawer
         documentId={search.id ?? null}
         initialPage={search.page ?? null}

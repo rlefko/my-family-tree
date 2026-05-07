@@ -5,8 +5,7 @@ import { useChunkSearch, type ChunkSearchHit } from "@/api/endpoints/search";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { kindLabel } from "@/features/documents/constants";
-
-const TREE_ID = "00000000-0000-0000-0000-000000000000";
+import { DEFAULT_TREE_ID } from "@/lib/tree";
 
 type Props = {
   documentId?: string;
@@ -21,7 +20,7 @@ export function DocumentSearch({ documentId, onPickResult }: Props) {
     e.preventDefault();
     const trimmed = query.trim();
     if (!trimmed) return;
-    search.mutate({ tree_id: TREE_ID, query: trimmed, k: 10, document_id: documentId });
+    search.mutate({ tree_id: DEFAULT_TREE_ID, query: trimmed, k: 10, document_id: documentId });
   }
 
   const tokens = query
