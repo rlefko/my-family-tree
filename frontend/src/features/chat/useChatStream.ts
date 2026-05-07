@@ -32,6 +32,8 @@ type SseEventData = Record<string, unknown> & { text?: string };
 export function useChatStream() {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [busy, setBusy] = useState(false);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const conversationIdRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   // Cancel any in-flight request on unmount.
@@ -88,9 +90,17 @@ export function useChatStream() {
             tree_id: TREE_ID,
             message: trimmed,
             history,
+            conversation_id: conversationIdRef.current,
           },
           { signal: controller.signal },
         )) {
+          if (evt.event === "start") {
+            const cid = (evt.data as { conversation_id?: string })?.conversation_id;
+            if (cid && cid !== conversationIdRef.current) {
+              conversationIdRef.current = cid;
+              setConversationId(cid);
+            }
+          }
           setTurns((prev) =>
             prev.map((t) => (t.id === pendingId ? applyEvent(t, evt.event, evt.data) : t)),
           );
@@ -124,7 +134,7 @@ export function useChatStream() {
     [busy, turns],
   );
 
-  return { turns, busy, send, stop };
+  return { turns, busy, send, stop, conversationId };
 }
 
 function applyEvent(turn: ChatTurn, type: string, data: SseEventData): ChatTurn {

@@ -11,11 +11,13 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from my_family_tree.api.deps import SessionDep
 from my_family_tree.core.errors import MFTError, NotFoundError, ValidationError
 from my_family_tree.core.logging import get_logger
 from my_family_tree.core.time import utcnow
+from my_family_tree.models.agent_run import AgentRun
 from my_family_tree.models.enums import ProposalAction, ProposalStatus, SubjectType
 from my_family_tree.models.proposal import Proposal
 from my_family_tree.services.proposal_apply import apply_proposal
@@ -81,6 +83,16 @@ _APPLY_ORDER: dict[tuple[ProposalAction, SubjectType | None], int] = {
 }
 
 
+async def _conversation_id_for(session: AsyncSession, proposal: Proposal) -> UUID | None:
+    """Return the conversation_id this proposal originated from, by way of its
+    agent_run. Used at apply time so synthetic chat-source provenance dedups
+    per-conversation rather than collapsing every chat assertion onto one row."""
+    if proposal.agent_run_id is None:
+        return None
+    run = await session.get(AgentRun, proposal.agent_run_id)
+    return run.conversation_id if run is not None else None
+
+
 def _row(p: Proposal) -> ProposalRow:
     return ProposalRow(
         id=p.id,
@@ -123,9 +135,10 @@ async def approve_proposal(
             f"proposal is {p.status.value}, only pending proposals can be approved"
         )
 
+    conversation_id = await _conversation_id_for(session, p)
     savepoint = await session.begin_nested()
     try:
-        target_id = await apply_proposal(session, p, actor=body.by)
+        target_id = await apply_proposal(session, p, actor=body.by, conversation_id=conversation_id)
         await savepoint.commit()
     except MFTError as e:
         await savepoint.rollback()
@@ -201,9 +214,12 @@ async def approve_proposals_batch(
                 )
             )
             continue
+        conversation_id = await _conversation_id_for(session, p)
         savepoint = await session.begin_nested()
         try:
-            target_id = await apply_proposal(session, p, actor=body.by)
+            target_id = await apply_proposal(
+                session, p, actor=body.by, conversation_id=conversation_id
+            )
             await savepoint.commit()
         except Exception as e:
             await savepoint.rollback()
