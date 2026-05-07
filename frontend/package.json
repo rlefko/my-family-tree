@@ -44,7 +44,7 @@
     "reactflow": "^11.11.4",
     "rehype-highlight": "^7.0.1",
     "remark-gfm": "^4.0.0",
-    "sonner": "^1.7.1",
+    "sonner": "^2.0.7",
     "tailwind-merge": "^2.5.5",
     "zod": "^4.4.3"
   },
