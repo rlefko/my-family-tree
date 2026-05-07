@@ -134,6 +134,10 @@ async def test_text_only_turn_emits_deltas_and_done() -> None:
 
 @pytest.mark.unit
 async def test_tool_call_dispatches_into_host_and_threads_result_back() -> None:
+    """The provider terminates every successful stream with `done`. The agent
+    must still re-enter the provider on the next turn to give the model a
+    chance to respond to tool results, instead of bailing out on the first
+    `done`."""
     args = {"display_name": "Ryan"}
     args_json = json.dumps(args)
     first_turn = [
@@ -141,6 +145,7 @@ async def test_tool_call_dispatches_into_host_and_threads_result_back() -> None:
         _tool_input("call_1", args_json),
         _tool_finished("call_1"),
         _usage(),
+        _done(),
     ]
     second_turn = [_text("Queued 1 proposal"), _usage(), _done()]
     provider = FakeProvider(scripts=[first_turn, second_turn])
@@ -180,6 +185,7 @@ async def test_tool_error_marks_result_as_error_and_continues() -> None:
         _tool_input("call_1", "{}"),
         _tool_finished("call_1"),
         _usage(),
+        _done(),
     ]
     second_turn = [_text("oops"), _done()]
 

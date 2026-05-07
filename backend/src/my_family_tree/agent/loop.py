@@ -81,7 +81,6 @@ class ChatAgent:
         while True:
             assistant_blocks: list[TextBlock | ToolUseBlock] = []
             tool_results: list[ToolResultBlock] = []
-            finished = False
 
             current_tool: dict[str, Any] | None = None
             current_text: list[str] = []
@@ -134,8 +133,6 @@ class ChatAgent:
                     current_text.append(event.text)
                 elif event.type == "usage" and event.usage:
                     tokens_used += event.usage.input_tokens + event.usage.output_tokens
-                elif event.type == "done":
-                    finished = True
                 elif event.type == "error":
                     yield ChatTurnEvent(
                         type="error", payload={"message": event.error_message or ""}
@@ -155,7 +152,11 @@ class ChatAgent:
                 yield ChatTurnEvent(type="error", payload={"message": str(e)})
                 return
 
-            if not tool_results or finished:
+            # Re-enter the provider whenever we have tool results to respond
+            # to. The provider's `done` event marks end-of-stream, not
+            # end-of-conversation; the agent only stops when its latest
+            # provider call produced no tool calls at all.
+            if not tool_results:
                 yield ChatTurnEvent(
                     type="done",
                     payload={
