@@ -136,6 +136,9 @@ class OpenAIProvider(LLMProvider):
         if reasoning is not None and reasoning.effort != "none":
             request["reasoning"] = {
                 "effort": OPENAI_EFFORT_FALLBACKS[reasoning.effort],
+                # Ask for an auto-summarized reasoning trace so the chat UI
+                # can show a "thinking..." pill while the model deliberates.
+                "summary": "auto",
             }
 
         return _stream_iter(self._client, request)
@@ -147,13 +150,25 @@ async def _stream_iter(client: AsyncOpenAI, request: dict[str, Any]) -> AsyncIte
     except Exception as e:
         raise LLMProviderError(f"openai responses.create failed: {e}") from e
 
+    # Responses-API streaming uses two ids for a function call: `item.id`
+    # (referenced by the args delta/done events as `item_id`) and `item.call_id`
+    # (the id the model expects on the function_call_output we send back).
+    # We translate every event to use the public-facing call_id so the agent
+    # loop's tool tracking lines up across started/delta/finished.
+    item_to_call_id: dict[str, str] = {}
+
     async for raw in stream:
-        for event in _translate_openai_event(raw):
+        for event in _translate_openai_event(raw, item_to_call_id):
             yield event
 
 
 def _to_openai_input(system: str | None, messages: list[Message]) -> list[dict[str, Any]]:
-    """Convert provider-neutral messages to OpenAI Responses input format."""
+    """Convert provider-neutral messages to OpenAI Responses input format.
+
+    The Responses API treats `function_call` and `function_call_output` as
+    top-level input items, not content-parts inside a role-message. So when an
+    assistant message contains a tool_use, we emit a text-only message (if it
+    has any text) followed by separate `function_call` items."""
     out: list[dict[str, Any]] = []
     if system:
         out.append({"role": "system", "content": system})
@@ -170,17 +185,18 @@ def _to_openai_input(system: str | None, messages: list[Message]) -> list[dict[s
                     )
             continue
 
-        parts: list[dict[str, Any]] = []
+        text_parts: list[dict[str, Any]] = []
+        function_calls: list[dict[str, Any]] = []
         for block in msg.content:
             if isinstance(block, TextBlock):
-                parts.append(
+                text_parts.append(
                     {
                         "type": "input_text" if msg.role == "user" else "output_text",
                         "text": block.text,
                     }
                 )
             elif isinstance(block, ToolUseBlock):
-                parts.append(
+                function_calls.append(
                     {
                         "type": "function_call",
                         "call_id": block.id,
@@ -188,7 +204,9 @@ def _to_openai_input(system: str | None, messages: list[Message]) -> list[dict[s
                         "arguments": _stringify_output(block.input),
                     }
                 )
-        out.append({"role": msg.role, "content": parts})
+        if text_parts:
+            out.append({"role": msg.role, "content": text_parts})
+        out.extend(function_calls)
     return out
 
 
@@ -198,47 +216,102 @@ def _stringify_output(value: Any) -> str:
     return json.dumps(value, default=str)
 
 
-def _translate_openai_event(raw: Any) -> list[StreamEvent]:
-    """Translate one raw OpenAI stream event into zero or more StreamEvents."""
+def _translate_openai_event(raw: Any, item_to_call_id: dict[str, str]) -> list[StreamEvent]:
+    """Translate one raw OpenAI Responses-API stream event into zero or more
+    provider-neutral StreamEvents. `item_to_call_id` is mutable per-stream
+    state used to map `item_id` (referenced by the args delta/done events) to
+    the public `call_id` the agent loop tracks."""
     events: list[StreamEvent] = []
     event_type = getattr(raw, "type", None)
+
     if event_type == "response.output_text.delta":
         events.append(StreamEvent(type="text_delta", text=getattr(raw, "delta", "")))
-    elif event_type == "response.function_call.added":
-        events.append(
-            StreamEvent(
-                type="tool_use_started",
-                tool_use_id=getattr(raw, "call_id", ""),
-                tool_name=getattr(raw, "name", ""),
+
+    elif event_type in (
+        "response.reasoning_summary_text.delta",
+        "response.reasoning_text.delta",
+    ):
+        # Surface a redacted reasoning summary to the chat UI so the user has
+        # a "thinking..." pill instead of a silent dead-air gap while the
+        # model burns reasoning tokens. Only the SUMMARY text is forwarded;
+        # raw reasoning is never persisted.
+        events.append(StreamEvent(type="thinking_delta", text=getattr(raw, "delta", "") or ""))
+
+    elif event_type == "response.output_item.added":
+        item = getattr(raw, "item", None)
+        if item is not None and getattr(item, "type", None) == "function_call":
+            item_id = getattr(item, "id", None) or ""
+            call_id = getattr(item, "call_id", "") or ""
+            if item_id:
+                item_to_call_id[item_id] = call_id
+            events.append(
+                StreamEvent(
+                    type="tool_use_started",
+                    tool_use_id=call_id,
+                    tool_name=getattr(item, "name", "") or "",
+                )
             )
-        )
-    elif event_type == "response.function_call.delta":
+
+    elif event_type == "response.function_call_arguments.delta":
+        item_id = getattr(raw, "item_id", "") or ""
+        call_id = item_to_call_id.get(item_id, item_id)
         events.append(
             StreamEvent(
                 type="tool_use_input_delta",
-                tool_use_id=getattr(raw, "call_id", ""),
-                tool_input_delta=getattr(raw, "delta", ""),
+                tool_use_id=call_id,
+                tool_input_delta=getattr(raw, "delta", "") or "",
             )
         )
-    elif event_type == "response.function_call.completed":
+
+    elif event_type == "response.function_call_arguments.done":
+        item_id = getattr(raw, "item_id", "") or ""
+        call_id = item_to_call_id.get(item_id, item_id)
         events.append(
             StreamEvent(
                 type="tool_use_finished",
-                tool_use_id=getattr(raw, "call_id", ""),
+                tool_use_id=call_id,
             )
         )
+
     elif event_type == "response.completed":
-        usage_obj = getattr(raw, "usage", None)
+        response = getattr(raw, "response", None)
+        usage_obj = getattr(response, "usage", None) if response is not None else None
         if usage_obj is not None:
+            input_details = getattr(usage_obj, "input_tokens_details", None)
+            output_details = getattr(usage_obj, "output_tokens_details", None)
+            cached = (getattr(input_details, "cached_tokens", 0) or 0) if input_details else 0
+            reasoning = (
+                (getattr(output_details, "reasoning_tokens", 0) or 0) if output_details else 0
+            )
             events.append(
                 StreamEvent(
                     type="usage",
                     usage=UsageDelta(
                         input_tokens=getattr(usage_obj, "input_tokens", 0) or 0,
                         output_tokens=getattr(usage_obj, "output_tokens", 0) or 0,
-                        reasoning_tokens=getattr(usage_obj, "reasoning_tokens", 0) or 0,
+                        cached_input_tokens=cached,
+                        reasoning_tokens=reasoning,
                     ),
                 )
             )
         events.append(StreamEvent(type="done", stop_reason="end_turn"))
+
+    elif event_type in ("response.failed", "response.incomplete"):
+        response = getattr(raw, "response", None)
+        error = getattr(response, "error", None) if response is not None else None
+        events.append(
+            StreamEvent(
+                type="error",
+                error_message=str(error) if error is not None else event_type,
+            )
+        )
+
+    elif event_type == "error":
+        events.append(
+            StreamEvent(
+                type="error",
+                error_message=str(getattr(raw, "message", "openai stream error")),
+            )
+        )
+
     return events

@@ -78,6 +78,8 @@ A personal genealogy research workbench. Upload documents, extract evidence, que
 - `vector(3072)` cannot be HNSW-indexed (2000-dim cap). Always query `embedding_half halfvec(3072)`.
 - `tree_id` column on every domain row even though we are single-user. Do not remove it; it makes the eventual multi-user transition trivial.
 - The chat agent has no canonical-write tools. All writes go through `proposal` rows that the user (or an explicit auto-approve policy, off by default) applies via the `/proposals/{id}/approve` API endpoint. Do not try to add MCP tools that bypass this.
+- When you edit `backend/src/my_family_tree/agent/system_prompt.py`, bump `CHAT_PROMPT_VERSION`. It is the inference cache key; without a bump, cached completions don't reflect prompt changes.
+- `AsyncSession` is not concurrency-safe. Don't `asyncio.gather` two awaits that share the same session. Either await sequentially or open a second session.
 
 ## Don't
 
@@ -86,6 +88,7 @@ A personal genealogy research workbench. Upload documents, extract evidence, que
 - Don't add emoji to code or comments. Emoji is required in commit messages, forbidden in code.
 - Don't credit Claude or Claude Code as commit author or co-author.
 - Don't propose new MCP tools that mutate canonical entities directly. Always go through proposals.
+- Don't put real PII (real family member names, birth dates, places, contact info) anywhere in the repo: source, tests, fixtures, seed data, docstrings, examples, docs, commit messages, or PR descriptions. Use neutral fictional examples like "Jane Doe", "April 15, 1932", "Boston, MA". `Ryan Lefkowitz <rlefkowitz1800@yahoo.com>` as commit / package author is the only allowed real-name reference.
 
 ## Skills
 
