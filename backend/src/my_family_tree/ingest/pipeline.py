@@ -182,18 +182,21 @@ async def _extract_text(
         doc.ocr_engine = result.engine
         doc.pages = 1
     elif doc.kind == DocumentKind.pdf_scan:
-        # Per-page rendering wired in a follow-up commit; the previous all-or-nothing
-        # call to ocr_image on raw PDF bytes never produced text.
-        result = ocr_image(raw)
-        session.add(
-            DocumentText(
-                document_id=doc.id,
-                page=1,
-                content=result.text,
-                extraction_method=ExtractionMethod.tesseract,
+        page_count = 0
+        for page_num, png_bytes in pdf_extractor.render_pages(raw):
+            result = ocr_image(png_bytes)
+            session.add(
+                DocumentText(
+                    document_id=doc.id,
+                    page=page_num,
+                    content=result.text,
+                    extraction_method=ExtractionMethod.tesseract,
+                )
             )
-        )
-        doc.ocr_engine = result.engine
+            doc.ocr_engine = result.engine
+            page_count = page_num
+        if page_count:
+            doc.pages = page_count
 
 
 async def _chunk(
