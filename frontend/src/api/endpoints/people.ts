@@ -89,6 +89,35 @@ export function usePersonDocuments(personId: string | null | undefined) {
   });
 }
 
+export type UpdatePersonInput = Partial<{
+  display_name: string | null;
+  given_names: string | null;
+  surname: string | null;
+  surname_at_birth: string | null;
+  suffix: string | null;
+  sex: "male" | "female" | "unknown";
+  birth_text: string | null;
+  death_text: string | null;
+  is_living: boolean;
+  notes_md: string | null;
+}>;
+
+export function useUpdatePerson() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ personId, patch }: { personId: string; patch: UpdatePersonInput }) =>
+      apiFetch<{ proposal_id: string; person_id: string }>(`/api/v1/people/${personId}`, {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+      }),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["people"] });
+      qc.invalidateQueries({ queryKey: ["people", vars.personId] });
+      qc.invalidateQueries({ queryKey: ["tree-graph"] });
+    },
+  });
+}
+
 export function useDeletePerson() {
   const qc = useQueryClient();
   return useMutation({

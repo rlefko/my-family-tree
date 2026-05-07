@@ -3,7 +3,9 @@ import { FileText, Network, Search, Users } from "lucide-react";
 import { useState } from "react";
 
 import { usePeople, type PersonRow } from "@/api/endpoints/people";
+import { Tooltip } from "@/components/ui/tooltip";
 import { PersonDrawer } from "@/features/people/PersonDrawer";
+import { displayMatchesStructured } from "@/lib/names";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/people")({
@@ -60,16 +62,20 @@ function PeoplePage() {
                 <th className="border-b border-zinc-200 px-4 py-2 text-left font-medium">Death</th>
                 <th className="border-b border-zinc-200 px-4 py-2 text-left font-medium">Status</th>
                 <th className="border-b border-zinc-200 px-4 py-2 text-right font-medium">
-                  <span className="inline-flex items-center gap-1">
-                    <Network className="h-3 w-3" />
-                    Rels
-                  </span>
+                  <Tooltip content="Number of relationships in which this person participates (parent, child, spouse, sibling, etc.).">
+                    <span className="inline-flex cursor-help items-center gap-1">
+                      <Network className="h-3 w-3" />
+                      Rels
+                    </span>
+                  </Tooltip>
                 </th>
                 <th className="border-b border-zinc-200 px-4 py-2 text-right font-medium">
-                  <span className="inline-flex items-center gap-1">
-                    <FileText className="h-3 w-3" />
-                    Docs
-                  </span>
+                  <Tooltip content="Number of distinct documents that contain at least one claim about this person.">
+                    <span className="inline-flex cursor-help items-center gap-1">
+                      <FileText className="h-3 w-3" />
+                      Docs
+                    </span>
+                  </Tooltip>
                 </th>
               </tr>
             </thead>
@@ -117,7 +123,7 @@ function Row({
     >
       <td className="px-4 py-2">
         <div className="font-medium text-zinc-900">{person.display_name}</div>
-        {person.surname && person.given_names ? (
+        {!displayMatchesStructured(person) && person.surname && person.given_names ? (
           <div className="text-[11px] text-zinc-500">
             {person.given_names} {person.surname}
           </div>
