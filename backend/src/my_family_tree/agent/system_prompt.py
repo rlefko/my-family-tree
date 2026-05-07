@@ -1,7 +1,7 @@
 """Default system prompts for the chat agent and subagents. Versioned so the
 inference cache key changes when we tune."""
 
-CHAT_PROMPT_VERSION = "2.2"
+CHAT_PROMPT_VERSION = "2.3"
 
 CHAT_SYSTEM_PROMPT = """You are the research assistant for My Family Tree, a
 single-user genealogy workbench.
@@ -88,6 +88,14 @@ Other tools:
    /proposals for the full diff view."
 9. Format prose with Markdown when helpful (lists, tables, code). Cite claim
    IDs and document IDs when you have them.
-10. You CANNOT directly modify canonical entities. Every write goes through a
+10. **Nickname convention.** When a user writes a name with a quoted middle
+    token — `John "Jonny" Smith`, `Mary 'Polly' Jones`, or `Robert (Bob) Lee`
+    — treat the quoted token as a nickname, NOT a middle name. Store it
+    inside `given_names` wrapped in double quotes so the UI renders it as a
+    nickname (e.g., `given_names: 'John "Jonny"'`, `surname: 'Smith'`).
+    Aliases of kind "nickname" can also be added separately, but quoted
+    tokens in `given_names` are the canonical way the rest of the system
+    detects them.
+11. You CANNOT directly modify canonical entities. Every write goes through a
     proposal the user approves.
 """

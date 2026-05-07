@@ -40,7 +40,7 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { Tooltip } from "@/components/ui/tooltip";
-import { displayMatchesStructured, parseName } from "@/lib/names";
+import { displayMatchesStructured, parseName, rebuildGivenNames } from "@/lib/names";
 import { cn } from "@/lib/utils";
 
 import { EditableField } from "./EditableField";
@@ -309,9 +309,7 @@ function DetailsPanel({
         value={parsed.first}
         saving={saving}
         onSave={async (v) => {
-          // Rebuild given_names from new first + existing middle.
-          const next = [v ?? "", parsed.middle ?? ""].filter(Boolean).join(" ").trim();
-          await patch({ given_names: next || null });
+          await patch({ given_names: rebuildGivenNames(v, parsed.middle, parsed.nicknames) });
         }}
       />
       <EditableField
@@ -319,10 +317,23 @@ function DetailsPanel({
         value={parsed.middle}
         saving={saving}
         onSave={async (v) => {
-          const next = [parsed.first ?? "", v ?? ""].filter(Boolean).join(" ").trim();
-          await patch({ given_names: next || null });
+          await patch({ given_names: rebuildGivenNames(parsed.first, v, parsed.nicknames) });
         }}
         tooltip="Stored as part of given names; we split on whitespace for display."
+      />
+      <EditableField
+        label="Nickname(s)"
+        value={parsed.nicknames.join(", ")}
+        saving={saving}
+        onSave={async (v) => {
+          const next =
+            (v ?? "")
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean) ?? [];
+          await patch({ given_names: rebuildGivenNames(parsed.first, parsed.middle, next) });
+        }}
+        tooltip='Comma-separated. Stored as quoted tokens inside given names (e.g., John "Jonny" Smith). The chat agent reads quoted tokens as nicknames automatically.'
       />
       <EditableField
         label="Surname"
@@ -363,10 +374,12 @@ function DetailsPanel({
         onSave={(v) => patch({ birth_text: v })}
         tooltip="Free-form date: '1990-04-12', 'April 12 1990', 'circa 1942', '1942-1944' all parse."
       />
-      <Field
+      <EditableField
         label="Birth place"
         value={person.birth_place?.name ?? null}
-        tooltip="Add a Birth event from the Events tab to set or change this."
+        saving={saving}
+        onSave={(v) => patch({ birth_place_text: v })}
+        tooltip="Type a place name. New places are created automatically; existing ones are reused."
       />
       <EditableField
         label="Death date"
@@ -374,10 +387,11 @@ function DetailsPanel({
         saving={saving}
         onSave={(v) => patch({ death_text: v })}
       />
-      <Field
+      <EditableField
         label="Death place"
         value={person.death_place?.name ?? null}
-        tooltip="Add a Death event from the Events tab to set or change this."
+        saving={saving}
+        onSave={(v) => patch({ death_place_text: v })}
       />
       <EditableField
         label="Living"
@@ -520,13 +534,15 @@ function RelationshipsPanel({
                   className="flex items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs"
                 >
                   <span className="flex-1 font-medium text-zinc-900">{e.other.display_name}</span>
-                  <Tooltip
-                    content={`Confidence in this relationship: ${e.confidence}/100. 100 means asserted directly by the user; lower numbers reflect inferences from documents or chat.`}
-                  >
-                    <span className="cursor-help text-[10px] uppercase tracking-wide text-zinc-400">
-                      {e.confidence}%
-                    </span>
-                  </Tooltip>
+                  {e.confidence >= 100 ? null : (
+                    <Tooltip
+                      content={`Confidence in this relationship: ${e.confidence}/100. 100 means asserted directly by the user; lower numbers reflect inferences from documents or chat.`}
+                    >
+                      <span className="cursor-help text-[10px] uppercase tracking-wide text-zinc-400">
+                        {e.confidence}%
+                      </span>
+                    </Tooltip>
+                  )}
                   <Tooltip content="Remove this relationship">
                     <button
                       type="button"
@@ -724,11 +740,13 @@ function EventCard({ ev }: { ev: EventRow }) {
     <li className="rounded-md border border-zinc-200 bg-white px-3 py-2 text-xs">
       <div className="flex items-start justify-between gap-2">
         <span className="font-medium capitalize text-zinc-900">{typeLabel}</span>
-        <Tooltip content={`Confidence in this event: ${ev.confidence}/100.`}>
-          <span className="cursor-help text-[10px] uppercase tracking-wide text-zinc-400">
-            {ev.confidence}%
-          </span>
-        </Tooltip>
+        {ev.confidence >= 100 ? null : (
+          <Tooltip content={`Confidence in this event: ${ev.confidence}/100.`}>
+            <span className="cursor-help text-[10px] uppercase tracking-wide text-zinc-400">
+              {ev.confidence}%
+            </span>
+          </Tooltip>
+        )}
       </div>
       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-zinc-600">
         {ev.date_text ? (
