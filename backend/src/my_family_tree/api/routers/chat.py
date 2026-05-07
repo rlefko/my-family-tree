@@ -1,18 +1,6 @@
-"""Chat endpoints. The frontend uses `/chat/stream` (SSE) for the live UI;
-`/chat` returns a single JSON blob for scripts and tests. Both run the same
-`ChatAgent` with the in-process `ToolHost`, so the LLM has access to the
-full MCP tool catalog and can propose persistent records.
-
-Both endpoints bootstrap a `Conversation` row (when the client doesn't pass
-one) and an `AgentRun` row for the turn. The agent_run_id is carried into
-the `ToolContext` so every proposal the agent emits is linked back to the
-chat turn that produced it. At approve time, the applier reads
-`agent_run.conversation_id` to dedup the synthetic chat `Source` per
-conversation rather than collapsing every turn onto one row.
-
-When a turn completes, both the user prompt and the assistant response are
-persisted as `Message` rows so the chat UI can rehydrate the thread on page
-reload via `GET /api/v1/conversations/{id}`."""
+"""Chat endpoints. `/chat/stream` (SSE) drives the UI; `/chat` returns one
+JSON blob for scripts and tests. Both run `ChatAgent` with the in-process
+`ToolHost`; proposals link back to chat via `agent_run_id`."""
 
 from __future__ import annotations
 
