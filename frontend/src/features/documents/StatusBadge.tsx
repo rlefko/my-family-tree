@@ -1,19 +1,12 @@
 import { Badge } from "@/components/ui/badge";
+import {
+  isActiveStatus,
+  statusLabel,
+  type DocumentStatus,
+} from "@/features/documents/constants";
 import { cn } from "@/lib/utils";
 
-const ACTIVE = new Set(["pending", "extracting", "embedding", "extracting_claims"]);
-
-const LABELS: Record<string, string> = {
-  pending: "Pending",
-  extracting: "Extracting",
-  embedding: "Embedding",
-  extracting_claims: "Linking",
-  ready: "Ready",
-  failed: "Failed",
-};
-
-export function StatusBadge({ status }: { status: string }) {
-  const label = LABELS[status] ?? status;
+export function StatusBadge({ status }: { status: DocumentStatus }) {
   const tone =
     status === "ready"
       ? "border-emerald-200 bg-emerald-50 text-emerald-700"
@@ -23,9 +16,9 @@ export function StatusBadge({ status }: { status: string }) {
   return (
     <Badge
       variant="outline"
-      className={cn(tone, ACTIVE.has(status) ? "animate-pulse" : "", "font-medium")}
+      className={cn(tone, isActiveStatus(status) ? "animate-pulse" : "", "font-medium")}
     >
-      {label}
+      {statusLabel(status)}
     </Badge>
   );
 }
