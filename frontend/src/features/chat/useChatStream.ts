@@ -99,7 +99,9 @@ export function useChatStream() {
         if ((e as { name?: string }).name === "AbortError") {
           setTurns((prev) =>
             prev.map((t) =>
-              t.id === pendingId ? { ...t, pending: false, content: t.content || "(cancelled)" } : t,
+              t.id === pendingId
+                ? { ...t, pending: false, content: t.content || "(cancelled)" }
+                : t,
             ),
           );
         } else {
@@ -153,7 +155,11 @@ function applyEvent(turn: ChatTurn, type: string, data: SseEventData): ChatTurn 
         ...turn,
         toolCalls: (turn.toolCalls ?? []).map((c) =>
           c.id === id
-            ? { ...c, status: isError ? "error" : "ok", output: (data as { output?: unknown })?.output }
+            ? {
+                ...c,
+                status: isError ? "error" : "ok",
+                output: (data as { output?: unknown })?.output,
+              }
             : c,
         ),
       };

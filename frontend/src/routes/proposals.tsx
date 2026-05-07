@@ -1,5 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+import { ProposalList } from "@/features/proposals/ProposalList";
+
 export const Route = createFileRoute("/proposals")({
   component: ProposalsPage,
   validateSearch: (search): { ids?: string } => ({
@@ -8,10 +10,20 @@ export const Route = createFileRoute("/proposals")({
 });
 
 function ProposalsPage() {
+  const { ids } = Route.useSearch();
+  const highlightIds = ids ? ids.split(",").filter(Boolean) : [];
   return (
-    <section className="p-6">
-      <h1 className="text-2xl font-semibold">Proposals</h1>
-      <p className="mt-1 text-sm text-zinc-500">List + diff + approve coming up.</p>
+    <section className="flex h-full flex-col">
+      <header className="border-b border-zinc-200 bg-white px-6 py-4">
+        <h1 className="text-xl font-semibold">Proposals</h1>
+        <p className="text-xs text-zinc-500">
+          Review and approve pending changes proposed by the chat agent. Approving materializes the
+          canonical row and writes a chat-source provenance trail.
+        </p>
+      </header>
+      <div className="flex-1 overflow-y-auto p-6">
+        <ProposalList highlightIds={highlightIds} />
+      </div>
     </section>
   );
 }
