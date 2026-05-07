@@ -79,6 +79,7 @@ class LLMView:
     default_reasoning_effort: Literal["none", "low", "medium", "high", "xhigh"]
     embedding_model: str
     embedding_dims: int
+    vision_model: str
     request_timeout_s: float
 
 
@@ -87,6 +88,7 @@ class OCRView:
     tesseract_bin: str
     vision_fallback_provider: Literal["openai", "anthropic"]
     vision_fallback_daily_usd_cap: float
+    vision_fallback_enabled: bool
     tesseract_min_confidence: int
 
 
@@ -178,13 +180,18 @@ class Settings(BaseSettings):
     llm_default_reasoning_effort: Literal["none", "low", "medium", "high", "xhigh"] = "high"
     llm_embedding_model: str = "text-embedding-3-large"
     llm_embedding_dims: int = 3072
+    llm_vision_model: str = "gpt-4o-mini"
     llm_request_timeout_s: float = 120.0
 
     # --- OCR ---------------------------------------------------------------
     tesseract_bin: str = "/usr/bin/tesseract"
     vision_fallback_provider: Literal["openai", "anthropic"] = "openai"
     vision_fallback_daily_usd_cap: float = 5.00
+    vision_fallback_enabled: bool = True
     tesseract_min_confidence: int = 60
+
+    # --- Uploads -----------------------------------------------------------
+    max_upload_bytes: int = 50 * 1024 * 1024
 
     # --- MCP ---------------------------------------------------------------
     mcp_http_host: str = "0.0.0.0"
@@ -249,6 +256,7 @@ class Settings(BaseSettings):
             default_reasoning_effort=self.llm_default_reasoning_effort,
             embedding_model=self.llm_embedding_model,
             embedding_dims=self.llm_embedding_dims,
+            vision_model=self.llm_vision_model,
             request_timeout_s=self.llm_request_timeout_s,
         )
 
@@ -258,6 +266,7 @@ class Settings(BaseSettings):
             tesseract_bin=self.tesseract_bin,
             vision_fallback_provider=self.vision_fallback_provider,
             vision_fallback_daily_usd_cap=self.vision_fallback_daily_usd_cap,
+            vision_fallback_enabled=self.vision_fallback_enabled,
             tesseract_min_confidence=self.tesseract_min_confidence,
         )
 
