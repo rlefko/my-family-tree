@@ -45,6 +45,12 @@ READ_TOOLS = {
     "conflict_list",
     "conflict_get",
     "tree_stats",
+    "web_search",
+    "web_fetch",
+    "genealogy_search",
+    "wikitree_get_person",
+    "familysearch_get_person",
+    "wikidata_get_entity",
 }
 
 
