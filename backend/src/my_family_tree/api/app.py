@@ -22,6 +22,7 @@ from my_family_tree.api.routers import (
     people,
     proposals,
     relationships,
+    search,
     tree,
 )
 from my_family_tree.core.config import get_settings
@@ -81,6 +82,7 @@ def create_app() -> FastAPI:
 
     app.include_router(health.router, tags=["health"])
     app.include_router(documents.router, prefix="/api/v1", tags=["documents"])
+    app.include_router(search.router, prefix="/api/v1", tags=["search"])
     app.include_router(people.router, prefix="/api/v1", tags=["people"])
     app.include_router(relationships.router, prefix="/api/v1", tags=["relationships"])
     app.include_router(conflicts.router, prefix="/api/v1", tags=["conflicts"])
