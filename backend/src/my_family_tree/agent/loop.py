@@ -76,6 +76,7 @@ class ChatAgent:
         tokens_used = 0
         tool_calls_used = 0
         history = list(messages)
+        proposal_ids: list[str] = []
 
         while True:
             assistant_blocks: list[TextBlock | ToolUseBlock] = []
@@ -114,6 +115,12 @@ class ChatAgent:
                         current_text.clear()
                     tool_results.append(result)
                     tool_calls_used += 1
+                    if (
+                        not result.is_error
+                        and isinstance(result.output, dict)
+                        and result.output.get("proposal_id") is not None
+                    ):
+                        proposal_ids.append(str(result.output["proposal_id"]))
                     yield ChatTurnEvent(
                         type="tool_result",
                         payload={
@@ -149,7 +156,14 @@ class ChatAgent:
                 return
 
             if not tool_results or finished:
-                yield ChatTurnEvent(type="done", payload={"tokens_used": tokens_used})
+                yield ChatTurnEvent(
+                    type="done",
+                    payload={
+                        "tokens_used": tokens_used,
+                        "tool_calls_used": tool_calls_used,
+                        "proposal_ids": list(proposal_ids),
+                    },
+                )
                 return
 
     async def _handle_event(
