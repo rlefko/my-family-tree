@@ -11,25 +11,25 @@ unchanged with no extra error handling on the call site.
 
 ## Providers
 
-| Provider     | Auth                                                                | Pricing                                                |
-| ------------ | ------------------------------------------------------------------- | ------------------------------------------------------ |
-| Tavily       | `WEB_SEARCH_PROVIDER=tavily` + `TAVILY_API_KEY`                     | Free tier; metered after.                              |
-| Brave Search | `WEB_SEARCH_PROVIDER=brave` + `BRAVE_API_KEY`                       | Free tier (2,000 queries/month); metered after.        |
-| WikiTree     | none. Opt out with `WIKITREE_ENABLED=false`.                        | Free; no auth for public profiles. Be polite (UA set). |
-| Wikidata     | none. Opt out with `WIKIDATA_ENABLED=false`.                        | Free; structured genealogy properties.                 |
-| FamilySearch | `FAMILYSEARCH_CLIENT_ID` + `FAMILYSEARCH_CLIENT_SECRET` (OAuth2)    | Free for personal use; developer registration needed.  |
+| Provider     | Auth                                                             | Pricing                                                |
+| ------------ | ---------------------------------------------------------------- | ------------------------------------------------------ |
+| Tavily       | `WEB_SEARCH_PROVIDER=tavily` + `TAVILY_API_KEY`                  | Free tier; metered after.                              |
+| Brave Search | `WEB_SEARCH_PROVIDER=brave` + `BRAVE_API_KEY`                    | Free tier (2,000 queries/month); metered after.        |
+| WikiTree     | none. Opt out with `WIKITREE_ENABLED=false`.                     | Free; no auth for public profiles. Be polite (UA set). |
+| Wikidata     | none. Opt out with `WIKIDATA_ENABLED=false`.                     | Free; structured genealogy properties.                 |
+| FamilySearch | `FAMILYSEARCH_CLIENT_ID` + `FAMILYSEARCH_CLIENT_SECRET` (OAuth2) | Free for personal use; developer registration needed.  |
 
 ## MCP tools
 
-| Tool                       | Capability         | Provider             |
-| -------------------------- | ------------------ | -------------------- |
-| `web_search`               | `WEB \| READ`      | Tavily or Brave      |
-| `web_fetch`                | `WEB \| READ`      | any URL              |
-| `genealogy_search`         | `WEB \| READ`      | aggregated           |
-| `wikitree_get_person`      | `WEB \| READ`      | WikiTree             |
-| `familysearch_get_person`  | `WEB \| READ`      | FamilySearch         |
-| `wikidata_get_entity`      | `WEB \| READ`      | Wikidata             |
-| `external_index_url`       | `WEB \| TRIVIAL_WRITE` | any URL          |
+| Tool                      | Capability             | Provider        |
+| ------------------------- | ---------------------- | --------------- |
+| `web_search`              | `WEB \| READ`          | Tavily or Brave |
+| `web_fetch`               | `WEB \| READ`          | any URL         |
+| `genealogy_search`        | `WEB \| READ`          | aggregated      |
+| `wikitree_get_person`     | `WEB \| READ`          | WikiTree        |
+| `familysearch_get_person` | `WEB \| READ`          | FamilySearch    |
+| `wikidata_get_entity`     | `WEB \| READ`          | Wikidata        |
+| `external_index_url`      | `WEB \| TRIVIAL_WRITE` | any URL         |
 
 ## Safety guards
 

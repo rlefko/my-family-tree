@@ -47,14 +47,14 @@ The chat agent can reach beyond uploaded documents when keys are configured
 in `.env`. Every provider is optional; absent providers are simply hidden
 from the agent's tool catalog and the rest of the system runs unchanged.
 
-| Provider     | Tool(s)                                                               | Auth                                          |
-| ------------ | --------------------------------------------------------------------- | --------------------------------------------- |
-| Tavily       | `web_search`                                                          | `WEB_SEARCH_PROVIDER=tavily` + `TAVILY_API_KEY` |
-| Brave Search | `web_search`                                                          | `WEB_SEARCH_PROVIDER=brave` + `BRAVE_API_KEY` |
-| WikiTree     | `genealogy_search`, `wikitree_get_person`                             | none (opt-out via `WIKITREE_ENABLED=false`)   |
-| Wikidata     | `genealogy_search`, `wikidata_get_entity`                             | none (opt-out via `WIKIDATA_ENABLED=false`)   |
-| FamilySearch | `genealogy_search`, `familysearch_get_person`                         | `FAMILYSEARCH_CLIENT_ID` + `FAMILYSEARCH_CLIENT_SECRET` |
-| (any URL)    | `web_fetch`, `external_index_url`                                     | none (SSRF and size-guarded)                  |
+| Provider     | Tool(s)                                       | Auth                                                    |
+| ------------ | --------------------------------------------- | ------------------------------------------------------- |
+| Tavily       | `web_search`                                  | `WEB_SEARCH_PROVIDER=tavily` + `TAVILY_API_KEY`         |
+| Brave Search | `web_search`                                  | `WEB_SEARCH_PROVIDER=brave` + `BRAVE_API_KEY`           |
+| WikiTree     | `genealogy_search`, `wikitree_get_person`     | none (opt-out via `WIKITREE_ENABLED=false`)             |
+| Wikidata     | `genealogy_search`, `wikidata_get_entity`     | none (opt-out via `WIKIDATA_ENABLED=false`)             |
+| FamilySearch | `genealogy_search`, `familysearch_get_person` | `FAMILYSEARCH_CLIENT_ID` + `FAMILYSEARCH_CLIENT_SECRET` |
+| (any URL)    | `web_fetch`, `external_index_url`             | none (SSRF and size-guarded)                            |
 
 `web_fetch` rejects loopback / link-local / private addresses, oversized
 responses, and non-text content types. `external_index_url` indexes the

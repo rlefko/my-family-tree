@@ -63,15 +63,15 @@ The chat agent has six optional tools for reaching the public web and
 genealogy databases. Each is gated by an `enabled_when` predicate so the
 agent never sees a tool whose provider is unconfigured:
 
-| Tool                       | Capability             | `enabled_when`                            |
-| -------------------------- | ---------------------- | ----------------------------------------- |
-| `web_search`               | `WEB \| READ`          | `s.web_search.is_enabled`                 |
-| `web_fetch`                | `WEB \| READ`          | always (SSRF-guarded)                     |
-| `genealogy_search`         | `WEB \| READ`          | `s.genealogy.any_enabled`                 |
-| `wikitree_get_person`      | `WEB \| READ`          | `s.genealogy.wikitree_enabled`            |
-| `familysearch_get_person`  | `WEB \| READ`          | `s.genealogy.familysearch_enabled`        |
-| `wikidata_get_entity`      | `WEB \| READ`          | `s.genealogy.wikidata_enabled`            |
-| `external_index_url`       | `WEB \| TRIVIAL_WRITE` | always (SSRF + size + content-type guards)|
+| Tool                      | Capability             | `enabled_when`                             |
+| ------------------------- | ---------------------- | ------------------------------------------ |
+| `web_search`              | `WEB \| READ`          | `s.web_search.is_enabled`                  |
+| `web_fetch`               | `WEB \| READ`          | always (SSRF-guarded)                      |
+| `genealogy_search`        | `WEB \| READ`          | `s.genealogy.any_enabled`                  |
+| `wikitree_get_person`     | `WEB \| READ`          | `s.genealogy.wikitree_enabled`             |
+| `familysearch_get_person` | `WEB \| READ`          | `s.genealogy.familysearch_enabled`         |
+| `wikidata_get_entity`     | `WEB \| READ`          | `s.genealogy.wikidata_enabled`             |
+| `external_index_url`      | `WEB \| TRIVIAL_WRITE` | always (SSRF + size + content-type guards) |
 
 Gating is centralized in `ToolRegistry.available(capability=..., settings=...)`
 and `ToolRegistry.get(name, settings=...)`, so both the in-process
