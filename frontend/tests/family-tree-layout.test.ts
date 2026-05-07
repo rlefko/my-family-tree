@@ -119,6 +119,39 @@ describe("buildLayout (family tree)", () => {
     expect(carolEdges[0].source).toBe("p-a");
   });
 
+  it("infers a couple union when two people share a child even without spouse_of", () => {
+    const { nodes, edges } = buildLayout({
+      persons: [personA, personB, personC],
+      couple_events: [],
+      relationships: [
+        // Two parents, no marriage on file
+        {
+          id: "r-pa-pc",
+          subject_id: "p-a",
+          object_id: "p-c",
+          type: "parent_of",
+          confidence: 100,
+        },
+        {
+          id: "r-pb-pc",
+          subject_id: "p-b",
+          object_id: "p-c",
+          type: "parent_of",
+          confidence: 100,
+        },
+      ],
+    });
+
+    const unionNodes = nodes.filter((n) => n.type === "union");
+    expect(unionNodes).toHaveLength(1);
+    const union = unionNodes[0];
+
+    // Susan has exactly one parent-edge, sourced from the inferred union.
+    const carolEdges = edges.filter((e) => e.target === "p-c");
+    expect(carolEdges).toHaveLength(1);
+    expect(carolEdges[0].source).toBe(union.id);
+  });
+
   it("does not render sibling_of edges; siblings are implied by shared parents", () => {
     const { edges } = buildLayout({
       persons: [personA, personC, personD],

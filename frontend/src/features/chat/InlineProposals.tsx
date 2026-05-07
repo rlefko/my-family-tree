@@ -14,6 +14,8 @@ import {
   Calendar,
   Check,
   CheckCheck,
+  CheckCircle2,
+  ChevronDown,
   ExternalLink,
   Layers,
   MapPin,
@@ -112,14 +114,45 @@ export function InlineProposals({ ids }: { ids: string[] }) {
 
   const pending = matched.filter((p) => p.status === "pending");
   const allResolved = pending.length === 0;
+  const approvedCount = matched.filter((p) => p.status === "approved").length;
+  const rejectedCount = matched.filter((p) => p.status === "rejected").length;
+
+  // Once every proposal in this set is resolved, collapse the whole block
+  // into a single summary line — click to expand the audit trail.
+  if (allResolved) {
+    const parts: string[] = [];
+    if (approvedCount) parts.push(`${approvedCount} approved`);
+    if (rejectedCount) parts.push(`${rejectedCount} rejected`);
+    const summary = parts.join(" · ") || "all resolved";
+    return (
+      <details className="group mt-3 rounded-md border border-emerald-100 bg-emerald-50/40 text-xs">
+        <summary className="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-emerald-900 marker:hidden">
+          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+          <span className="font-medium">
+            {matched.length} proposal{matched.length === 1 ? "" : "s"} ({summary})
+          </span>
+          <ChevronDown className="ml-auto h-3.5 w-3.5 text-emerald-600 transition-transform group-open:rotate-180" />
+        </summary>
+        <ul className="space-y-1 border-t border-emerald-100 p-2">
+          {matched.map((p) => (
+            <ProposalLineItem
+              key={p.id}
+              p={p}
+              onApprove={() => approveMutation.mutate(p.id)}
+              onReject={() => rejectMutation.mutate(p.id)}
+              busy={false}
+            />
+          ))}
+        </ul>
+      </details>
+    );
+  }
 
   return (
     <div className="mt-3 rounded-md border border-indigo-100 bg-indigo-50/40 p-2">
       <div className="flex items-center justify-between gap-2 px-1.5 pb-1.5">
         <span className="text-xs font-medium text-indigo-900">
-          {allResolved
-            ? `${matched.length} proposal${matched.length === 1 ? "" : "s"} resolved`
-            : `${matched.length} proposal${matched.length === 1 ? "" : "s"} (${pending.length} pending)`}
+          {matched.length} proposal{matched.length === 1 ? "" : "s"} ({pending.length} pending)
         </span>
         <div className="flex items-center gap-2">
           {pending.length > 1 ? (
