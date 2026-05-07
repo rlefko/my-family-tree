@@ -14,8 +14,8 @@
  *      spouses and at the same Y so the edge sits between them like a
  *      wedding bar.
  *
- * Sibling_of edges are NOT drawn — the layout already groups siblings under
- * shared parents, which is how genealogy charts represent siblinghood.
+ * Sibling_of edges are NOT drawn (the layout already groups siblings under
+ * shared parents, which is how genealogy charts represent siblinghood).
  */
 
 import dagre from "@dagrejs/dagre";
@@ -206,8 +206,8 @@ function collectCouples(rels: RelationshipRow[]): Map<string, Union> {
 /**
  * Augment the couples map with implicit unions inferred from shared children.
  * If A and B both have a `parent_of` edge to the same C, we treat (A, B) as
- * a couple for layout purposes — joined by a heart, with C's edge coming
- * down from the joiner — even if no explicit spouse_of / partner_of edge
+ * a couple for layout purposes (joined by a heart, with C's edge coming
+ * down from the joiner) even if no explicit spouse_of / partner_of edge
  * exists. Makes the tree visually cohesive when the user only entered the
  * parent edges. Existing explicit couples are preserved as-is; we only add
  * pairs that don't already have a union.
@@ -428,7 +428,7 @@ export function buildLayout(
   const edges: Edge[] = [];
   let i = 0;
 
-  // Spouse half-edges into the union (visual only — short horizontal lines).
+  // Spouse half-edges into the union (visual only, short horizontal lines).
   for (const [, u] of couples) {
     edges.push({
       id: `couple-l-${i++}`,

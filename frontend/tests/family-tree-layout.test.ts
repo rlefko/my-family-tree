@@ -94,7 +94,7 @@ describe("buildLayout (family tree)", () => {
     const coupleEdges = edges.filter((e) => e.target === union.id);
     expect(coupleEdges).toHaveLength(2);
 
-    // Susan receives exactly one parentage edge — from the union, not from A or B individually.
+    // Susan receives exactly one parentage edge from the union, not from A or B individually.
     const carolEdges = edges.filter((e) => e.target === "p-c");
     expect(carolEdges).toHaveLength(1);
     expect(carolEdges[0].source).toBe(union.id);

@@ -1,6 +1,6 @@
 /**
- * Tests for the name parsing helpers — initials, nickname extraction, and
- * given_names round-trip. These keep the avatar badge and the drawer's
+ * Tests for the name parsing helpers (initials, nickname extraction, and
+ * given_names round-trip). These keep the avatar badge and the drawer's
  * Nickname row working when the backend sends partial structured fields.
  */
 
