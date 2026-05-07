@@ -121,7 +121,7 @@ export type ChatAttachmentRef = {
   filename: string;
 };
 
-type ChatStreamValue = {
+export type ChatStreamValue = {
   turns: ChatTurn[];
   busy: boolean;
   conversationId: string | null;
