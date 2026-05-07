@@ -157,8 +157,7 @@ describe("buildLayout (family tree)", () => {
     // Only parent edges should be present (no edge between p-c and p-d).
     const siblingEdges = edges.filter(
       (e) =>
-        (e.source === "p-c" && e.target === "p-d") ||
-        (e.source === "p-d" && e.target === "p-c"),
+        (e.source === "p-c" && e.target === "p-d") || (e.source === "p-d" && e.target === "p-c"),
     );
     expect(siblingEdges).toHaveLength(0);
   });

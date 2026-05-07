@@ -234,7 +234,9 @@ function FieldShell({
   );
   return (
     <div>
-      <div className="mb-1">{tooltip ? <Tooltip content={tooltip}>{labelEl}</Tooltip> : labelEl}</div>
+      <div className="mb-1">
+        {tooltip ? <Tooltip content={tooltip}>{labelEl}</Tooltip> : labelEl}
+      </div>
       {children}
     </div>
   );

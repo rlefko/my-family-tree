@@ -10,7 +10,10 @@ export type ParsedName = {
   surname: string | null;
 };
 
-export function parseName(given: string | null | undefined, surname: string | null | undefined): ParsedName {
+export function parseName(
+  given: string | null | undefined,
+  surname: string | null | undefined,
+): ParsedName {
   const tokens = (given ?? "").trim().split(/\s+/).filter(Boolean);
   return {
     first: tokens[0] ?? null,
@@ -20,7 +23,10 @@ export function parseName(given: string | null | undefined, surname: string | nu
 }
 
 /** Build a structured "full name" string from the parts. */
-export function structuredFullName(p: { given_names?: string | null; surname?: string | null }): string {
+export function structuredFullName(p: {
+  given_names?: string | null;
+  surname?: string | null;
+}): string {
   return [p.given_names, p.surname].filter(Boolean).join(" ").trim();
 }
 

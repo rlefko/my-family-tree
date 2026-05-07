@@ -12,7 +12,14 @@ export type ConversationRow = {
 export type ConversationListResp = { items: ConversationRow[] };
 
 export type AssistantBlock =
-  | { type: "tool_use"; id: string; name: string; input: unknown; output: unknown; is_error: boolean }
+  | {
+      type: "tool_use";
+      id: string;
+      name: string;
+      input: unknown;
+      output: unknown;
+      is_error: boolean;
+    }
   | { type: "text"; text: string }
   | { type: "proposals_summary"; proposal_ids: string[] };
 

@@ -102,12 +102,7 @@ function PersonCard({ data, selected, id }: PersonCardProps) {
     >
       <Handle type="target" position={Position.Top} className="!h-2 !w-2 !bg-zinc-400" />
       <Handle type="source" position={Position.Bottom} className="!h-2 !w-2 !bg-zinc-400" />
-      <Handle
-        id="left"
-        type="source"
-        position={Position.Left}
-        className="!h-2 !w-2 !bg-pink-400"
-      />
+      <Handle id="left" type="source" position={Position.Left} className="!h-2 !w-2 !bg-pink-400" />
       <Handle
         id="right"
         type="source"
@@ -130,10 +125,7 @@ function PersonCard({ data, selected, id }: PersonCardProps) {
         {dates ? <div className="mt-0.5 text-[10px] text-zinc-500">{dates}</div> : null}
       </div>
       <span
-        className={cn(
-          "inline-flex shrink-0 items-center justify-center rounded-full p-1",
-          chipBg,
-        )}
+        className={cn("inline-flex shrink-0 items-center justify-center rounded-full p-1", chipBg)}
       >
         <SexBadge sex={person.sex} />
       </span>
@@ -229,7 +221,10 @@ function collectParentsByChild(rels: RelationshipRow[]): Map<string, string[]> {
  * siblings on the same dagre rank instead of leaving the parentless ones
  * at the top of the chart.
  */
-function inferSiblingParents(parents: Map<string, string[]>, rels: RelationshipRow[]): Map<string, string[]> {
+function inferSiblingParents(
+  parents: Map<string, string[]>,
+  rels: RelationshipRow[],
+): Map<string, string[]> {
   // Union-find over sibling_of relationships.
   const parent = new Map<string, string>();
   const find = (x: string): string => {
@@ -283,13 +278,19 @@ type LayoutOpts = {
   selectedId?: string | null;
 };
 
-export function buildLayout(graph: TreeGraph, opts: LayoutOpts = {}): { nodes: Node[]; edges: Edge[] } {
+export function buildLayout(
+  graph: TreeGraph,
+  opts: LayoutOpts = {},
+): { nodes: Node[]; edges: Edge[] } {
   const couples = collectCouples(graph.relationships);
   const directParents = collectParentsByChild(graph.relationships);
   const parents = inferSiblingParents(directParents, graph.relationships);
 
   // Index couple events by sorted (a,b) pair so the union node can show date/place.
-  const coupleEventByPair = new Map<string, { date?: string | null; place?: string | null; type: string }>();
+  const coupleEventByPair = new Map<
+    string,
+    { date?: string | null; place?: string | null; type: string }
+  >();
   for (const ev of graph.couple_events ?? []) {
     const key = couplesKey(ev.person_a_id, ev.person_b_id);
     coupleEventByPair.set(`${key}:${ev.type}`, {
