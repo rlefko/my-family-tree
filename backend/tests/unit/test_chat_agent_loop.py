@@ -138,7 +138,7 @@ async def test_tool_call_dispatches_into_host_and_threads_result_back() -> None:
     must still re-enter the provider on the next turn to give the model a
     chance to respond to tool results, instead of bailing out on the first
     `done`."""
-    args = {"display_name": "Ryan"}
+    args = {"display_name": "Test Person"}
     args_json = json.dumps(args)
     first_turn = [
         _tool_started("call_1", "person_propose_create"),
