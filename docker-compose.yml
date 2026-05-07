@@ -85,9 +85,35 @@ services:
       echo 'minio bootstrap complete'"
     restart: "no"
 
+  # One-shot migration runner. Applies alembic upgrade head, then exits.
+  # api/worker/mcp gate on this via service_completed_successfully so a fresh
+  # `make up` always lands on a migrated schema.
+  migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file: .env
+    command: alembic upgrade head
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - backend_venv:/app/.venv
+    restart: "no"
+
   # FastAPI app. uvicorn `--reload` watches /app and restarts on .py changes.
   api:
     <<: *api-base
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
     command: uvicorn my_family_tree.api.app:create_app --factory --host 0.0.0.0 --port 8000 --reload --reload-dir /app/src
     ports:
       - "8000:8000"
@@ -95,11 +121,29 @@ services:
   # arq worker. `--watch /app/src` re-execs the worker on .py changes.
   worker:
     <<: *api-base
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
     command: arq my_family_tree.workers.arq_app.WorkerSettings --watch /app/src
 
   # MCP HTTP server. Wrapped in watchfiles so any change under src/ restarts.
   mcp:
     <<: *api-base
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
     command: >
       watchfiles
       "python -m my_family_tree.cli mcp --transport http --host 0.0.0.0 --port 8765"
