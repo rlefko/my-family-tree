@@ -92,7 +92,7 @@ async def apply_proposal(  # noqa: PLR0911,PLR0912  one branch per (action, targ
         return await _apply_accept_claim(session, proposal, actor)
 
     if action == ProposalAction.reject_claim:
-        return await _apply_reject_claim(session, proposal, actor)
+        return await _apply_reject_claim(session, proposal)
 
     if action == ProposalAction.resolve_conflict:
         return await _apply_resolve_conflict(session, proposal, actor)
@@ -593,8 +593,7 @@ async def _apply_accept_claim(session: AsyncSession, proposal: Any, actor: str) 
     return claim.id
 
 
-async def _apply_reject_claim(session: AsyncSession, proposal: Any, actor: str) -> UUID:
-    del actor
+async def _apply_reject_claim(session: AsyncSession, proposal: Any) -> UUID:
     if proposal.target_id is None:
         raise ValidationError("reject_claim proposal missing target_id (claim_id)")
     claim = await session.get(Claim, proposal.target_id)
