@@ -21,6 +21,7 @@ from my_family_tree.external.genealogy.base import (
     GenealogyRelative,
     as_dict,
     as_list,
+    split_query_name,
 )
 from my_family_tree.external.http import build_http_client, request_json
 
@@ -103,7 +104,7 @@ class WikiTreeProvider(GenealogyProvider):
         place: str | None = None,
     ) -> list[GenealogyHit]:
         del place  # WikiTree's searchPerson does not accept a place filter.
-        first_name, last_name = _split_name(query)
+        first_name, last_name = split_query_name(query)
         data = {
             "action": "searchPerson",
             "FirstName": first_name,
@@ -264,19 +265,6 @@ class WikiTreeProvider(GenealogyProvider):
 
     async def aclose(self) -> None:
         await self.client.aclose()
-
-
-def _split_name(query: str) -> tuple[str, str]:
-    """WikiTree's `searchPerson` wants FirstName / LastName separately. We
-    do a best-effort split: everything up to the last token is FirstName,
-    the last token is LastName. Single-token queries are treated as a last
-    name, which surfaces broader matches."""
-    parts = query.strip().split()
-    if not parts:
-        return ("", "")
-    if len(parts) == 1:
-        return ("", parts[0])
-    return (" ".join(parts[:-1]), parts[-1])
 
 
 def build_wikitree_provider(*, user_agent: str, timeout_s: float) -> WikiTreeProvider:

@@ -29,6 +29,20 @@ def as_list(value: object) -> list[Any] | None:
     return None
 
 
+def split_query_name(query: str) -> tuple[str, str]:
+    """Best-effort `(first_names, last_name)` split for provider search inputs.
+
+    Everything up to the last whitespace-separated token is treated as the
+    given name(s); the last token becomes the surname. A single-token query
+    is treated as a surname so providers return broader matches."""
+    parts = query.strip().split()
+    if not parts:
+        return ("", "")
+    if len(parts) == 1:
+        return ("", parts[0])
+    return (" ".join(parts[:-1]), parts[-1])
+
+
 @dataclass(slots=True, frozen=True)
 class GenealogyHit:
     provider: str
