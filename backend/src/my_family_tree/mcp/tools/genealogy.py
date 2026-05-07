@@ -10,10 +10,9 @@ provider is missing."""
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from my_family_tree.core.errors import ExternalProviderError
-from my_family_tree.external.genealogy import GenealogyHit, GenealogyProfile
 from my_family_tree.mcp.host import ToolContext
 from my_family_tree.mcp.registry import Capability, get_registry
 
@@ -21,6 +20,8 @@ registry = get_registry()
 
 
 class GenealogyHitOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     provider: str
     provider_id: str
     name: str
@@ -33,6 +34,8 @@ class GenealogyHitOut(BaseModel):
 
 
 class GenealogyRelativeOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     provider: str
     provider_id: str | None
     relation: str
@@ -43,6 +46,8 @@ class GenealogyRelativeOut(BaseModel):
 
 
 class GenealogyProfileOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     provider: str
     provider_id: str
     name: str
@@ -53,46 +58,6 @@ class GenealogyProfileOut(BaseModel):
     birth_place: str | None
     death_place: str | None
     relatives: list[GenealogyRelativeOut]
-
-
-def _hit_out(hit: GenealogyHit) -> GenealogyHitOut:
-    return GenealogyHitOut(
-        provider=hit.provider,
-        provider_id=hit.provider_id,
-        name=hit.name,
-        summary=hit.summary,
-        url=hit.url,
-        birth=hit.birth,
-        death=hit.death,
-        place=hit.place,
-        score=hit.score,
-    )
-
-
-def _profile_out(profile: GenealogyProfile) -> GenealogyProfileOut:
-    return GenealogyProfileOut(
-        provider=profile.provider,
-        provider_id=profile.provider_id,
-        name=profile.name,
-        summary=profile.summary,
-        url=profile.url,
-        birth=profile.birth,
-        death=profile.death,
-        birth_place=profile.birth_place,
-        death_place=profile.death_place,
-        relatives=[
-            GenealogyRelativeOut(
-                provider=rel.provider,
-                provider_id=rel.provider_id,
-                relation=rel.relation,
-                name=rel.name,
-                url=rel.url,
-                birth=rel.birth,
-                death=rel.death,
-            )
-            for rel in profile.relatives
-        ],
-    )
 
 
 class GenealogySearchInput(BaseModel):
@@ -132,7 +97,7 @@ async def genealogy_search(
         death_year=payload.death_year,
         place=payload.place,
     )
-    return GenealogySearchOutput(results=[_hit_out(h) for h in hits])
+    return GenealogySearchOutput(results=[GenealogyHitOut.model_validate(h) for h in hits])
 
 
 class WikitreeGetPersonInput(BaseModel):
@@ -161,7 +126,7 @@ async def wikitree_get_person(
     if ctx.genealogy is None or not ctx.genealogy.has("wikitree"):
         raise ExternalProviderError("wikitree provider is not enabled")
     profile = await ctx.genealogy.get_person("wikitree", payload.wikitree_id)
-    return _profile_out(profile)
+    return GenealogyProfileOut.model_validate(profile)
 
 
 class FamilysearchGetPersonInput(BaseModel):
@@ -190,7 +155,7 @@ async def familysearch_get_person(
     if ctx.genealogy is None or not ctx.genealogy.has("familysearch"):
         raise ExternalProviderError("familysearch provider is not enabled")
     profile = await ctx.genealogy.get_person("familysearch", payload.person_id)
-    return _profile_out(profile)
+    return GenealogyProfileOut.model_validate(profile)
 
 
 class WikidataGetEntityInput(BaseModel):
@@ -219,4 +184,4 @@ async def wikidata_get_entity(
     if ctx.genealogy is None or not ctx.genealogy.has("wikidata"):
         raise ExternalProviderError("wikidata provider is not enabled")
     profile = await ctx.genealogy.get_person("wikidata", payload.qid)
-    return _profile_out(profile)
+    return GenealogyProfileOut.model_validate(profile)
