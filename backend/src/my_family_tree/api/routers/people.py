@@ -21,6 +21,7 @@ from my_family_tree.models.enums import (
     PersonStatus,
     ProposalAction,
     ProposalStatus,
+    RelType,
     SubjectType,
 )
 from my_family_tree.models.event import Event, EventParticipant
@@ -608,6 +609,52 @@ async def update_person(
     proposal.approved_by = "user"
     await session.flush()
     return {"proposal_id": str(proposal.id), "person_id": str(target_id)}
+
+
+@router.delete("/relationships/{relationship_id}", response_model=Any)
+async def delete_relationship(relationship_id: UUID, session: SessionDep) -> dict[str, str]:
+    """Soft-delete a relationship via the proposal flow. Removes both the
+    canonical row and (for symmetric types) its mirror so the edge fully
+    disappears from the tree."""
+    rel = await session.get(Relationship, relationship_id)
+    if rel is None or rel.deleted_at is not None:
+        raise NotFoundError(f"relationship {relationship_id} not found")
+
+    proposal = Proposal(
+        tree_id=rel.tree_id,
+        action=ProposalAction.delete,
+        target_type=SubjectType.relationship,
+        target_id=rel.id,
+        payload_json={"reason": "user_initiated"},
+        rationale_md="Relationship removed from the People drawer.",
+        confidence=100,
+        status=ProposalStatus.pending,
+    )
+    session.add(proposal)
+    await session.flush()
+    await apply_proposal(session, proposal, actor="user")
+
+    # For symmetric types, soft-delete the mirror row too so the edge is
+    # gone from both directions in the relationships listing.
+    symmetric = {RelType.spouse_of, RelType.sibling_of, RelType.partner_of}
+    if rel.type in symmetric:
+        mirror_stmt = select(Relationship).where(
+            Relationship.tree_id == rel.tree_id,
+            Relationship.type == rel.type,
+            Relationship.subject_id == rel.object_id,
+            Relationship.object_id == rel.subject_id,
+            Relationship.deleted_at.is_(None),
+        )
+        mirror = (await session.execute(mirror_stmt)).scalar_one_or_none()
+        if mirror is not None:
+            mirror.deleted_at = utcnow()
+
+    proposal.status = ProposalStatus.approved
+    proposal.approved_at = utcnow()
+    proposal.applied_at = utcnow()
+    proposal.approved_by = "user"
+    await session.flush()
+    return {"proposal_id": str(proposal.id), "status": "deleted"}
 
 
 class AddNoteBody(BaseModel):
