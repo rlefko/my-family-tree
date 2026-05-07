@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from my_family_tree.core.errors import ExternalProviderError
 from my_family_tree.external.fetch import fetch_url
@@ -30,6 +30,8 @@ WEB_FETCH_MAX_CHARS = 50_000
 
 
 class WebSearchResultOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     title: str
     url: str
     snippet: str
@@ -66,16 +68,7 @@ async def web_search(ctx: ToolContext, payload: WebSearchInput) -> WebSearchOutp
     hits = await ctx.web_search.search(payload.query, k=payload.k)
     return WebSearchOutput(
         provider=ctx.web_search.provider.name,
-        results=[
-            WebSearchResultOut(
-                title=hit.title,
-                url=hit.url,
-                snippet=hit.snippet,
-                score=hit.score,
-                provider=hit.provider,
-            )
-            for hit in hits
-        ],
+        results=[WebSearchResultOut.model_validate(hit) for hit in hits],
     )
 
 
