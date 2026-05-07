@@ -226,16 +226,18 @@ async def get_document(session: SessionDep, document_id: UUID) -> DocumentDetail
     doc = await session.get(Document, document_id)
     if doc is None:
         raise NotFoundError(f"document {document_id} not found")
-    text_count = (
-        await session.execute(
-            select(func.count()).select_from(DocumentText).where(DocumentText.document_id == doc.id)
-        )
-    ).scalar_one()
-    chunk_count = (
-        await session.execute(
-            select(func.count()).select_from(Chunk).where(Chunk.document_id == doc.id)
-        )
-    ).scalar_one()
+    text_count_subq = (
+        select(func.count())
+        .select_from(DocumentText)
+        .where(DocumentText.document_id == doc.id)
+        .scalar_subquery()
+    )
+    chunk_count_subq = (
+        select(func.count()).select_from(Chunk).where(Chunk.document_id == doc.id).scalar_subquery()
+    )
+    text_count, chunk_count = (
+        await session.execute(select(text_count_subq, chunk_count_subq))
+    ).one()
     return DocumentDetail(
         id=doc.id,
         kind=doc.kind.value,
