@@ -63,7 +63,7 @@ it with `frontend/src/api/sse.ts`. Event types:
 
 | Event               | When                                       | Payload                                |
 | ------------------- | ------------------------------------------ | -------------------------------------- |
-| `start`             | Before the first provider call             | `{conversation_id?}`                   |
+| `start`             | Before the first provider call             | `{conversation_id, agent_run_id}`      |
 | `text_delta`        | Each token from the assistant              | `{text}`                               |
 | `thinking_delta`    | Anthropic extended-thinking summary tokens | `{text}`                               |
 | `tool_use_started`  | Provider began emitting a tool call        | `{id, name}`                           |
@@ -72,6 +72,14 @@ it with `frontend/src/api/sse.ts`. Event types:
 | `usage`             | End-of-stream token usage                  | `{input_tokens, output_tokens, ...}`   |
 | `done`              | Final event of the turn                    | `{stop_reason, proposal_ids[], usage}` |
 | `error`             | Provider or tool exception                 | `{message}`                            |
+
+The chat router auto-creates a `Conversation` row on the first turn (when the
+client sends no `conversation_id`) and an `AgentRun` row for every turn.
+Proposals emitted by the agent are stamped with `agent_run_id`, and at
+approve time the proposal-applier reads `agent_run.conversation_id` to dedup
+the synthetic chat `Source` per conversation. The frontend captures the
+`conversation_id` from the `start` event and echoes it on subsequent turns
+so the same thread keeps reusing the same Source row.
 
 ## Subagents
 

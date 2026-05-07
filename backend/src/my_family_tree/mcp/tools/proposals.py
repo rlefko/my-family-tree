@@ -36,6 +36,7 @@ async def make_proposal(
             payload_json=payload,
             rationale_md=rationale,
             confidence=confidence,
+            agent_run_id=ctx.agent_run_id,
         )
         session.add(proposal)
         await session.flush()
