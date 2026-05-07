@@ -220,8 +220,7 @@ class PersonProposeCreateInput(BaseModel):
     birth_place_text: str | None = Field(
         default=None,
         description=(
-            "Verbatim birth place, e.g. 'Boston, MA'. "
-            "The applier looks up or queues a place row."
+            "Verbatim birth place, e.g. 'Boston, MA'. The applier looks up or queues a place row."
         ),
     )
     death_text: str | None = None
