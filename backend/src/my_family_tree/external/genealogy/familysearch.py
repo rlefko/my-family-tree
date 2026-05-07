@@ -27,6 +27,7 @@ from my_family_tree.external.genealogy.base import (
     GenealogyRelative,
     as_dict,
     as_list,
+    split_query_name,
 )
 from my_family_tree.external.http import build_http_client, request_json
 
@@ -75,7 +76,7 @@ class FamilySearchProvider(GenealogyProvider):
         place: str | None = None,
     ) -> list[GenealogyHit]:
         params: dict[str, str] = {"q.givenName": "", "q.surname": ""}
-        first, last = _split_name(query)
+        first, last = split_query_name(query)
         params["q.givenName"] = first
         params["q.surname"] = last
         if birth_year is not None:
@@ -352,15 +353,6 @@ def _other_party(rel: dict[str, Any], anchor_id: str) -> tuple[str | None, str |
     if not isinstance(other_id, str):
         return (None, None)
     return (other_id, None)
-
-
-def _split_name(query: str) -> tuple[str, str]:
-    parts = query.strip().split()
-    if not parts:
-        return ("", "")
-    if len(parts) == 1:
-        return ("", parts[0])
-    return (" ".join(parts[:-1]), parts[-1])
 
 
 def build_familysearch_provider(
