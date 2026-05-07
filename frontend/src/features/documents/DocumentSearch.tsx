@@ -99,9 +99,7 @@ function ResultCard({
           </Badge>
         ) : null}
         {hit.page ? <Badge variant="secondary">p.{hit.page}</Badge> : null}
-        <span className="ml-auto text-[10px] text-zinc-400">
-          {(hit.score * 100).toFixed(0)}%
-        </span>
+        <span className="ml-auto text-[10px] text-zinc-400">{(hit.score * 100).toFixed(0)}%</span>
       </div>
       <p className="line-clamp-3 text-xs text-zinc-700">
         <HighlightedSnippet text={hit.content} tokens={tokens} />
