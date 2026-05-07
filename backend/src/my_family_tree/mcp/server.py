@@ -28,16 +28,9 @@ from starlette.routing import Mount, Route
 from my_family_tree.core.logging import get_logger
 from my_family_tree.external.genealogy import GenealogyService
 from my_family_tree.external.web_search import WebSearchService
+from my_family_tree.mcp import tools  # noqa: F401  importing the package registers every tool
 from my_family_tree.mcp.host import ToolContext
 from my_family_tree.mcp.registry import Capability, get_registry
-from my_family_tree.mcp.tools import (  # noqa: F401  side-effect: register tools
-    chunks,
-    conflicts,
-    documents,
-    persons,
-    proposals,
-    stats,
-)
 
 log = get_logger(__name__)
 
