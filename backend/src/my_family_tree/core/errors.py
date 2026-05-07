@@ -70,3 +70,17 @@ class RequestTooLargeError(MFTError):
 class LLMProviderError(MFTError):
     code = "llm_provider_error"
     status_code = 502
+
+
+class ExternalProviderError(MFTError):
+    """A web search, genealogy, or fetch provider failed or refused the request."""
+
+    code = "external_provider_error"
+    status_code = 502
+
+
+class UnsafeUrlError(ExternalProviderError):
+    """A URL targets a private network or otherwise blocked address."""
+
+    code = "unsafe_url"
+    status_code = 400
