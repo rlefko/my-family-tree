@@ -253,9 +253,7 @@ async def _extract_visual(
             log.info("vision.cap_hit_mid_doc", document_id=str(doc.id), page=page_num)
             break
         try:
-            description = await deps.vision.describe_page(
-                image_bytes, prompt=VISION_PAGE_PROMPT
-            )
+            description = await deps.vision.describe_page(image_bytes, prompt=VISION_PAGE_PROMPT)
         except Exception as e:  # log and continue; one bad page does not fail the doc
             log.warning(
                 "vision.page_failed",
