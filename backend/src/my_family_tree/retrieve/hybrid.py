@@ -36,12 +36,18 @@ async def hybrid_search(
     """Run an RRF-fused hybrid search. Caller provides an embedding; this
     function does not call the embeddings client itself, so it can be used
     in cost-sensitive or offline contexts. When `document_id` is set, results
-    are scoped to a single document."""
+    are scoped to a single document.
+
+    Both the FTS and vector stages already JOIN `document` for tree-scoping,
+    so they SELECT `original_filename` and `kind` inline; that keeps citation
+    metadata on the result rows and avoids a separate hydration round-trip.
+    """
     # The optional filter clause is two static strings, not user input; bind
     # parameters carry the values. Suppress the SQL-injection lint accordingly.
     doc_filter_sql = " AND chunk.document_id = :doc_id" if document_id is not None else ""
     fts_sql = (
         "SELECT chunk.id AS chunk_id, chunk.document_id, chunk.page, chunk.content, "  # noqa: S608
+        "document.original_filename AS document_filename, document.kind::text AS document_kind, "
         "ts_rank_cd(chunk.tsv, plainto_tsquery('english', :q)) AS rank "
         "FROM chunk JOIN document ON document.id = chunk.document_id "
         "WHERE document.tree_id = :tree_id "
@@ -65,7 +71,7 @@ async def hybrid_search(
     if embedding is not None:
         distance = Chunk.embedding_half.op("<=>")(embedding).label("distance")
         vec_stmt = (
-            select(Chunk, distance)
+            select(Chunk, Document.original_filename, Document.kind, distance)
             .join(Document, Document.id == Chunk.document_id)
             .where(Document.tree_id == tree_id)
             .order_by(distance.asc())
@@ -83,16 +89,13 @@ async def hybrid_search(
                     "document_id": row.Chunk.document_id,
                     "page": row.Chunk.page,
                     "content": row.Chunk.content,
+                    "document_filename": row.original_filename,
+                    "document_kind": row.kind.value,
                 },
             )
             scores[cid] = scores.get(cid, 0.0) + 1.0 / (k_rrf + rank)
 
     ranked = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)[:k]
-    if not ranked:
-        return []
-
-    doc_ids = {sources[cid]["document_id"] for cid, _ in ranked}
-    doc_meta = await _hydrate_document_meta(session, doc_ids)
     return [
         RetrievedChunk(
             chunk_id=cid,
@@ -100,21 +103,8 @@ async def hybrid_search(
             page=sources[cid].get("page"),
             content=sources[cid]["content"],
             score=score,
-            document_filename=doc_meta.get(sources[cid]["document_id"], (None, None))[0],
-            document_kind=doc_meta.get(sources[cid]["document_id"], (None, None))[1],
+            document_filename=sources[cid].get("document_filename"),
+            document_kind=sources[cid].get("document_kind"),
         )
         for cid, score in ranked
     ]
-
-
-async def _hydrate_document_meta(
-    session: AsyncSession, doc_ids: set[UUID]
-) -> dict[UUID, tuple[str, str]]:
-    """Map document_id -> (original_filename, kind) for citation rendering."""
-    if not doc_ids:
-        return {}
-    stmt = select(Document.id, Document.original_filename, Document.kind).where(
-        Document.id.in_(doc_ids)
-    )
-    rows = (await session.execute(stmt)).all()
-    return {row[0]: (row[1], row[2].value) for row in rows}
