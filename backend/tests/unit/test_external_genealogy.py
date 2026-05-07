@@ -33,7 +33,7 @@ def _view(**overrides: object) -> GenealogyView:
         "familysearch_client_secret": None,
         "familysearch_environment": "production",
         "wikitree_enabled": False,
-        "wikitree_user_agent": "ua/test",
+        "genealogy_user_agent": "ua/test",
         "wikidata_enabled": False,
         "max_results": 5,
         "request_timeout_s": 5.0,

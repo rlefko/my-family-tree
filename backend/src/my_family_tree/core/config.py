@@ -128,7 +128,7 @@ class GenealogyView:
     familysearch_client_secret: SecretStr | None
     familysearch_environment: Literal["integration", "beta", "production"]
     wikitree_enabled: bool
-    wikitree_user_agent: str
+    genealogy_user_agent: str
     wikidata_enabled: bool
     max_results: int
     request_timeout_s: float
@@ -249,7 +249,9 @@ class Settings(BaseSettings):
     familysearch_client_secret: SecretStr | None = None
     familysearch_environment: Literal["integration", "beta", "production"] = "production"
     wikitree_enabled: bool = True
-    wikitree_user_agent: str = "my-family-tree/0.1 (+https://github.com/rlefkowitz/my-family-tree)"
+    genealogy_user_agent: str = (
+        "my-family-tree/0.1 (+https://github.com/rlefkowitz/my-family-tree)"
+    )
     wikidata_enabled: bool = True
     genealogy_max_results: int = 10
     genealogy_request_timeout_s: float = 30.0
@@ -344,7 +346,7 @@ class Settings(BaseSettings):
             familysearch_client_secret=self.familysearch_client_secret,
             familysearch_environment=self.familysearch_environment,
             wikitree_enabled=self.wikitree_enabled,
-            wikitree_user_agent=self.wikitree_user_agent,
+            genealogy_user_agent=self.genealogy_user_agent,
             wikidata_enabled=self.wikidata_enabled,
             max_results=self.genealogy_max_results,
             request_timeout_s=self.genealogy_request_timeout_s,
