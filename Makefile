@@ -18,8 +18,9 @@ bootstrap: ## Tool checks, uv sync, yarn install, pre-commit install
 	cd frontend && yarn install --frozen-lockfile
 	@command -v pre-commit >/dev/null && pre-commit install || echo "pre-commit not installed; skipping hook install"
 
-up: ## Start the full stack via docker-compose
+up: ## Start the full stack via docker-compose with migrations applied
 	docker compose up -d
+	docker compose run --rm migrate
 
 down: ## Stop the stack
 	docker compose down
