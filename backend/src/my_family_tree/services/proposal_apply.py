@@ -500,7 +500,7 @@ async def _apply_create_place(
     session: AsyncSession, proposal: Any, payload: dict[str, Any]
 ) -> UUID:
     name: str = payload["name"]
-    normalized = _normalize_place_name(name)
+    normalized = normalize_place_name(name)
     existing = await _find_existing_place(session, proposal.tree_id, normalized)
     if existing is not None:
         raise ValidationError(
@@ -531,7 +531,7 @@ async def _resolve_place(
     if missing; the chat agent should propose one separately."""
     if not place_text:
         return None
-    normalized = _normalize_place_name(place_text)
+    normalized = normalize_place_name(place_text)
     found = await _find_existing_place(session, tree_id, normalized)
     return found.id if found else None
 
@@ -546,7 +546,7 @@ async def _find_existing_place(
     return (await session.execute(stmt)).scalar_one_or_none()
 
 
-def _normalize_place_name(name: str) -> str:
+def normalize_place_name(name: str) -> str:
     return name.strip().lower()
 
 
