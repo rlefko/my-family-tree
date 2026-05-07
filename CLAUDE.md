@@ -88,6 +88,7 @@ A personal genealogy research workbench. Upload documents, extract evidence, que
 - Don't add emoji to code or comments. Emoji is required in commit messages, forbidden in code.
 - Don't credit Claude or Claude Code as commit author or co-author.
 - Don't propose new MCP tools that mutate canonical entities directly. Always go through proposals.
+- Don't put real PII (real family member names, birth dates, places, contact info) anywhere in the repo: source, tests, fixtures, seed data, docstrings, examples, docs, commit messages, or PR descriptions. Use neutral fictional examples like "Jane Doe", "April 15, 1932", "Boston, MA". `Ryan Lefkowitz <rlefkowitz1800@yahoo.com>` as commit / package author is the only allowed real-name reference.
 
 ## Skills
 
