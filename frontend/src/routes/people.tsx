@@ -130,9 +130,17 @@ function Row({
         ) : null}
       </td>
       <td className="px-4 py-2">
-        <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold", sexClass)}>
-          {person.sex}
-        </span>
+        <Tooltip content={`Sex: ${person.sex}`}>
+          <span
+            className={cn(
+              "inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full text-sm font-bold leading-none",
+              sexClass,
+            )}
+            aria-label={`sex: ${person.sex}`}
+          >
+            {person.sex === "male" ? "♂" : person.sex === "female" ? "♀" : "?"}
+          </span>
+        </Tooltip>
       </td>
       <td className="px-4 py-2 text-zinc-700">{person.birth_text || <span className="text-zinc-400">—</span>}</td>
       <td className="px-4 py-2 text-zinc-700">
