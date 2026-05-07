@@ -60,6 +60,13 @@ class StorageError(MFTError):
     status_code = 500
 
 
+class RequestTooLargeError(MFTError):
+    """Raised when an upload exceeds the configured byte limit."""
+
+    code = "request_too_large"
+    status_code = 413
+
+
 class LLMProviderError(MFTError):
     code = "llm_provider_error"
     status_code = 502

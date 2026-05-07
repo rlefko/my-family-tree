@@ -5,10 +5,13 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import Annotated
 
+from arq.connections import ArqRedis
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from my_family_tree.core.config import Settings, get_settings
+from my_family_tree.core.errors import LLMProviderError
+from my_family_tree.embed.client import EmbeddingsClient
 from my_family_tree.llm.registry import ProviderRegistry
 from my_family_tree.storage.s3 import ObjectStore
 
@@ -41,7 +44,20 @@ def llm_registry_dep(request: Request) -> ProviderRegistry:
     return request.app.state.llm  # type: ignore[no-any-return]
 
 
+def enqueue_pool_dep(request: Request) -> ArqRedis:
+    return request.app.state.enqueue_pool  # type: ignore[no-any-return]
+
+
+def embeddings_client_dep(request: Request) -> EmbeddingsClient:
+    client = request.app.state.embeddings_client
+    if client is None:
+        raise LLMProviderError("embeddings client unavailable; set OPENAI_API_KEY")
+    return client  # type: ignore[no-any-return]
+
+
 SessionDep = Annotated[AsyncSession, Depends(session_dep)]
 StorageDep = Annotated[ObjectStore, Depends(storage_dep)]
 LLMDep = Annotated[ProviderRegistry, Depends(llm_registry_dep)]
 SettingsDep = Annotated[Settings, Depends(settings_dep)]
+EnqueueDep = Annotated[ArqRedis, Depends(enqueue_pool_dep)]
+EmbeddingsDep = Annotated[EmbeddingsClient, Depends(embeddings_client_dep)]

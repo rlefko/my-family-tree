@@ -104,3 +104,37 @@ def test_llm_provider_switch_from_flat_env(monkeypatch: pytest.MonkeyPatch) -> N
     s = Settings()
     assert s.llm.default_provider == "anthropic"
     assert s.llm.default_model == "claude-opus-4-7"
+
+
+@pytest.mark.unit
+def test_max_upload_bytes_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("MAX_UPLOAD_BYTES", raising=False)
+    reset_settings_cache()
+    assert Settings().max_upload_bytes == 50 * 1024 * 1024
+
+
+@pytest.mark.unit
+def test_max_upload_bytes_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MAX_UPLOAD_BYTES", "12345")
+    reset_settings_cache()
+    assert Settings().max_upload_bytes == 12345
+
+
+@pytest.mark.unit
+def test_vision_model_default_and_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("LLM_VISION_MODEL", raising=False)
+    reset_settings_cache()
+    assert Settings().llm.vision_model == "gpt-4o-mini"
+    monkeypatch.setenv("LLM_VISION_MODEL", "gpt-4o")
+    reset_settings_cache()
+    assert Settings().llm.vision_model == "gpt-4o"
+
+
+@pytest.mark.unit
+def test_vision_fallback_enabled_default_and_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("VISION_FALLBACK_ENABLED", raising=False)
+    reset_settings_cache()
+    assert Settings().ocr.vision_fallback_enabled is True
+    monkeypatch.setenv("VISION_FALLBACK_ENABLED", "false")
+    reset_settings_cache()
+    assert Settings().ocr.vision_fallback_enabled is False
