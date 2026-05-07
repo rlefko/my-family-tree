@@ -16,6 +16,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -342,17 +343,20 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
     [busy, qc],
   );
 
-  const value: ChatStreamValue = {
-    turns,
-    busy,
-    conversationId,
-    unseenCount,
-    send,
-    stop,
-    newChat,
-    switchConversation,
-    markSeen,
-  };
+  const value = useMemo<ChatStreamValue>(
+    () => ({
+      turns,
+      busy,
+      conversationId,
+      unseenCount,
+      send,
+      stop,
+      newChat,
+      switchConversation,
+      markSeen,
+    }),
+    [turns, busy, conversationId, unseenCount, send, stop, newChat, switchConversation, markSeen],
+  );
 
   return <ChatStreamContext.Provider value={value}>{children}</ChatStreamContext.Provider>;
 }
