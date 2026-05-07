@@ -245,7 +245,7 @@ class PersonProposeCreateInput(BaseModel):
     sex: Literal["male", "female", "unknown"] = "unknown"
     birth_text: str | None = Field(
         default=None,
-        description="Verbatim birth-date phrase, e.g. 'April 15, 1932' or '1842'.",
+        description="Verbatim birth-date phrase, e.g. 'April 15, 1932' or 'circa 1842'.",
     )
     birth_place_text: str | None = Field(
         default=None,

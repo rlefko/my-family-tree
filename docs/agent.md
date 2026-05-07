@@ -7,9 +7,9 @@ provider stops or budgets are exhausted.
 
 ## End-to-end record persistence
 
-The agent isn't just a chat box. When you tell it "I am Ryan, born 1932-04-15,
-my parents are Jane and John, my brothers are Mary and Peter," it fans
-that out into proposals via the propose-write tools, and the response stream
+The agent isn't just a chat box. When you tell it "Add Jane Doe, born
+April 15, 1932 in Boston, with two children John and Mary," it fans that
+out into proposals via the propose-write tools, and the response stream
 includes both the live tool calls and a summary pill linking to the
 `/proposals` page.
 
