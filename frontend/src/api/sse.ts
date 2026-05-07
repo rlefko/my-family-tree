@@ -64,6 +64,7 @@ export async function* postSSE<TData = unknown>(
 
   // SSE chunks must be consumed strictly in order; sequential await is intentional.
   while (true) {
+    // eslint-disable-next-line no-await-in-loop -- streaming reads are inherently sequential
     const { value, done } = await reader.read();
     if (done) break;
     // Normalise CRLF → LF so downstream block-splitting on \n\n is reliable
