@@ -76,11 +76,11 @@ class ChatAgent:
         tokens_used = 0
         tool_calls_used = 0
         history = list(messages)
+        proposal_ids: list[str] = []
 
         while True:
             assistant_blocks: list[TextBlock | ToolUseBlock] = []
             tool_results: list[ToolResultBlock] = []
-            finished = False
 
             current_tool: dict[str, Any] | None = None
             current_text: list[str] = []
@@ -114,6 +114,25 @@ class ChatAgent:
                         current_text.clear()
                     tool_results.append(result)
                     tool_calls_used += 1
+                    if (
+                        not result.is_error
+                        and isinstance(result.output, dict)
+                        and result.output.get("proposal_id") is not None
+                    ):
+                        proposal_ids.append(str(result.output["proposal_id"]))
+                    # Re-emit `tool_use_finished` with the parsed input now
+                    # that we have it; this is what the chat UI shows in the
+                    # tool-call card. The earlier bare `tool_use_finished`
+                    # already fired from `_handle_event`; this one carries
+                    # the same id plus the input payload.
+                    yield ChatTurnEvent(
+                        type="tool_use_finished",
+                        payload={
+                            "id": block.id,
+                            "name": block.name,
+                            "input": block.input,
+                        },
+                    )
                     yield ChatTurnEvent(
                         type="tool_result",
                         payload={
@@ -127,8 +146,6 @@ class ChatAgent:
                     current_text.append(event.text)
                 elif event.type == "usage" and event.usage:
                     tokens_used += event.usage.input_tokens + event.usage.output_tokens
-                elif event.type == "done":
-                    finished = True
                 elif event.type == "error":
                     yield ChatTurnEvent(
                         type="error", payload={"message": event.error_message or ""}
@@ -148,8 +165,19 @@ class ChatAgent:
                 yield ChatTurnEvent(type="error", payload={"message": str(e)})
                 return
 
-            if not tool_results or finished:
-                yield ChatTurnEvent(type="done", payload={"tokens_used": tokens_used})
+            # Re-enter the provider whenever we have tool results to respond
+            # to. The provider's `done` event marks end-of-stream, not
+            # end-of-conversation; the agent only stops when its latest
+            # provider call produced no tool calls at all.
+            if not tool_results:
+                yield ChatTurnEvent(
+                    type="done",
+                    payload={
+                        "tokens_used": tokens_used,
+                        "tool_calls_used": tool_calls_used,
+                        "proposal_ids": list(proposal_ids),
+                    },
+                )
                 return
 
     async def _handle_event(

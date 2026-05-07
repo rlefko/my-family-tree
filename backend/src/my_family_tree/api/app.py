@@ -14,10 +14,12 @@ from my_family_tree.api.middleware import RequestContextMiddleware
 from my_family_tree.api.routers import (
     chat,
     conflicts,
+    conversations,
     documents,
     health,
     people,
     proposals,
+    relationships,
     tree,
 )
 from my_family_tree.core.config import get_settings
@@ -67,8 +69,10 @@ def create_app() -> FastAPI:
     app.include_router(health.router, tags=["health"])
     app.include_router(documents.router, prefix="/api/v1", tags=["documents"])
     app.include_router(people.router, prefix="/api/v1", tags=["people"])
+    app.include_router(relationships.router, prefix="/api/v1", tags=["relationships"])
     app.include_router(conflicts.router, prefix="/api/v1", tags=["conflicts"])
     app.include_router(proposals.router, prefix="/api/v1", tags=["proposals"])
+    app.include_router(conversations.router, prefix="/api/v1", tags=["conversations"])
     app.include_router(chat.router, prefix="/api/v1", tags=["chat"])
     app.include_router(tree.router, prefix="/api/v1", tags=["tree"])
 
