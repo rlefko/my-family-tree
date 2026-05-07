@@ -85,12 +85,15 @@ function normalize(s: string): string {
 
 /**
  * Build a 1- or 2-character initial badge: first-name initial plus last-name
- * initial. Falls back to just the first-name initial when there's no surname.
+ * initial. Falls back to just the first-name initial when there's no surname
+ * (or vice-versa). Never blends middle names or nicknames into the badge.
  *
- * Tries the structured fields first (`given_names`, `surname`); if either is
- * missing, falls back to the display name parsed as "First [...] Last" — the
- * first token's initial paired with the last token's initial. Never blends
- * middle names or nicknames into the badge.
+ * Resolution order:
+ *  - First initial: structured `given_names` → first plain token of display_name
+ *  - Last initial:  structured `surname`     → last plain token of display_name
+ *
+ * Each side falls back independently, so a record with only `surname` set
+ * still recovers the first initial from display_name (and vice-versa).
  */
 export function personInitials(p: {
   display_name: string;
@@ -98,24 +101,19 @@ export function personInitials(p: {
   surname?: string | null;
 }): string {
   const parsed = parseName(p.given_names, p.surname);
-  const firstInitial = (parsed.first ?? "")[0]?.toUpperCase() ?? "";
+  const displayParsed = parseName(p.display_name, null);
 
-  let lastInitial = (parsed.surname ?? "")[0]?.toUpperCase() ?? "";
-  if (!firstInitial && !lastInitial) {
-    // Fall back to display name — same convention: first word + last word,
-    // skipping any quoted nickname tokens in between.
-    const displayParsed = parseName(p.display_name, null);
-    const fi = (displayParsed.first ?? "")[0]?.toUpperCase() ?? "";
-    const lastFromDisplay = displayParsed.middle?.split(/\s+/).pop() ?? null;
-    const li = (lastFromDisplay ?? "")[0]?.toUpperCase() ?? "";
-    return `${fi}${li}` || "?";
+  const firstSource = parsed.first ?? displayParsed.first;
+  const firstInitial = firstSource ? firstSource[0].toUpperCase() : "";
+
+  let lastSource: string | null = parsed.surname;
+  if (!lastSource) {
+    // displayParsed.middle is the joined non-first plain tokens (nicknames
+    // already stripped by parseName). The last one is the surname-equivalent.
+    const tail = displayParsed.middle?.split(/\s+/).pop() ?? null;
+    lastSource = tail;
   }
-  if (!lastInitial) {
-    const parts = (p.display_name ?? "").trim().split(/\s+/).filter(Boolean);
-    if (parts.length > 1) {
-      lastInitial = parts[parts.length - 1][0]?.toUpperCase() ?? "";
-    }
-  }
+  const lastInitial = lastSource ? lastSource[0].toUpperCase() : "";
 
   return `${firstInitial}${lastInitial}` || "?";
 }
