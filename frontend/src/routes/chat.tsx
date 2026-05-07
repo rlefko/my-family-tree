@@ -312,35 +312,10 @@ function BusyFooter({
   );
 }
 
-function ThinkingPill({
-  text,
-  live,
-  collapsed,
-}: {
-  text: string;
-  live: boolean;
-  collapsed?: boolean;
-}) {
+function ThinkingPill({ text, live }: { text: string; live: boolean }) {
   // Show only the last few lines of the reasoning summary so the bubble
-  // doesn't grow unbounded while the model deliberates. After the turn
-  // finishes, render as a collapsed `<details>` that the user can re-open.
+  // doesn't grow unbounded while the model deliberates.
   const tail = text.split(/\n+/).filter(Boolean).slice(-3).join(" · ");
-  if (collapsed) {
-    return (
-      <details className="group mb-2 rounded-md border border-amber-200 bg-amber-50/70 text-[11px] text-amber-900">
-        <summary className="flex cursor-pointer items-center gap-1.5 px-2 py-1 marker:hidden">
-          <Brain className="h-3 w-3 text-amber-600" />
-          <span className="font-medium">Thinking summary</span>
-          <ChevronDown className="ml-auto h-3 w-3 text-amber-600 transition-transform group-open:rotate-180" />
-        </summary>
-        <div className="border-t border-amber-200 px-2 py-1 text-amber-900">
-          <pre className="max-h-48 overflow-auto whitespace-pre-wrap font-sans text-[11px] leading-snug">
-            {text || "(no summary)"}
-          </pre>
-        </div>
-      </details>
-    );
-  }
   return (
     <Tooltip
       content="OpenAI's reasoning summary while it deliberates. Raw thinking is never persisted; only the summary is shown."

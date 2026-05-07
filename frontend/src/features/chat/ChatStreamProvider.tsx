@@ -237,18 +237,13 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
         proposalIds: [],
       };
 
-      setTurns((prev) => {
-        const history = prev.filter((t) => !t.pending && !t.error);
-        return [...history, userTurn, pending];
-      });
-
-      // Capture history BEFORE we add the new pending turn.
+      // Snapshot the prior turns once and reuse for both the optimistic update
+      // and the request body so we never read state we just wrote.
       let historySnapshot: { role: string; content: string }[] = [];
       setTurns((prev) => {
-        historySnapshot = prev
-          .filter((t) => !t.pending && !t.error && t.id !== userTurn.id && t.id !== pendingId)
-          .map((t) => ({ role: t.role, content: t.content }));
-        return prev;
+        const history = prev.filter((t) => !t.pending && !t.error);
+        historySnapshot = history.map((t) => ({ role: t.role, content: t.content }));
+        return [...history, userTurn, pending];
       });
 
       setBusy(true);
