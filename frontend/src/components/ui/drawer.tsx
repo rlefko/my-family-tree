@@ -1,7 +1,7 @@
 /**
  * Right-side slide-over panel built on Radix Dialog. We intentionally pass
  * `modal={false}` so opening the drawer does NOT trap focus or block clicks
- * on the underlying table — the user can keep clicking rows to swap the
+ * on the underlying table; the user can keep clicking rows to swap the
  * drawer's contents without first closing the panel.
  */
 

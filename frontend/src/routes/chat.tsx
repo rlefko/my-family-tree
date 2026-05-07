@@ -253,7 +253,7 @@ function Bubble({ turn }: { turn: ChatTurn }) {
       ) : turn.pending && isQuiet ? (
         <PendingHero hasThinking={hasThinking} />
       ) : !isUser && isQuiet && !turn.pending ? (
-        <span className="text-xs italic text-zinc-400">(no response — try rephrasing)</span>
+        <span className="text-xs italic text-zinc-400">(no response, try rephrasing)</span>
       ) : null}
       {!isUser && turn.pending && !isQuiet ? (
         <BusyFooter runningToolName={runningTool?.name ?? null} isStreamingText={hasContent} />

@@ -3,7 +3,7 @@
  * Documents. Footer holds Add Note and Delete actions; Relationships tab has
  * an inline Add Relationship form.
  *
- * Every visible field on the Details tab is editable in place — click a value
+ * Every visible field on the Details tab is editable in place. Click a value
  * to swap it for an input, Enter to save, Escape to cancel. Each save goes
  * through the proposal flow on the server but auto-applies since the user
  * just confirmed it.
@@ -302,7 +302,7 @@ function DetailsPanel({
         value={person.display_name}
         saving={saving}
         onSave={(v) => patch({ display_name: v })}
-        tooltip="The label shown everywhere — usually the full common name."
+        tooltip="The label shown everywhere, usually the full common name."
       />
       <EditableField
         label="First name"

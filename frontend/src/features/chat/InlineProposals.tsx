@@ -6,7 +6,7 @@
  *
  * Uses the same `useApproveProposal` / `useRejectProposal` / `useApproveBatch`
  * hooks as the dedicated `/proposals` page so optimistic state stays in
- * sync — approving here updates the badge here AND any open proposals tab.
+ * sync, so approving here updates the badge here AND any open proposals tab.
  */
 
 import { Link } from "@tanstack/react-router";
@@ -118,7 +118,7 @@ export function InlineProposals({ ids }: { ids: string[] }) {
   const rejectedCount = matched.filter((p) => p.status === "rejected").length;
 
   // Once every proposal in this set is resolved, collapse the whole block
-  // into a single summary line — click to expand the audit trail.
+  // into a single summary line; click to expand the audit trail.
   if (allResolved) {
     const parts: string[] = [];
     if (approvedCount) parts.push(`${approvedCount} approved`);

@@ -51,7 +51,7 @@ export async function* postSSE<TData = unknown>(
       // ignore
     }
     throw new Error(
-      `SSE request failed: ${response.status} ${response.statusText}${detail ? ` — ${detail.slice(0, 200)}` : ""}`,
+      `SSE request failed: ${response.status} ${response.statusText}${detail ? `: ${detail.slice(0, 200)}` : ""}`,
     );
   }
   if (!response.body) {

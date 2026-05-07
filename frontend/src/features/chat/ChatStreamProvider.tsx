@@ -338,7 +338,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
           setUnseenCount((c) => c + 1);
           const proposalCount = finalized.proposalIds?.length ?? 0;
           const summary = proposalCount
-            ? `Chat finished — ${proposalCount} proposal${proposalCount === 1 ? "" : "s"} queued`
+            ? `Chat finished, ${proposalCount} proposal${proposalCount === 1 ? "" : "s"} queued`
             : "Chat finished";
           toast(summary, { description: "Open Chat to review." });
         }

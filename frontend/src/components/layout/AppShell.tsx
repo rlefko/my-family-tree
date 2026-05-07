@@ -55,7 +55,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <Icon className="h-4 w-4" />
                 <span className="flex-1">{item.label}</span>
                 {isChat && chat.busy ? (
-                  <Tooltip content="Agent is working — click to view">
+                  <Tooltip content="Agent is working, click to view">
                     <span
                       className="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700"
                       aria-label="Agent working"

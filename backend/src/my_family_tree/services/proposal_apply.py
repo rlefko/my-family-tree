@@ -291,7 +291,7 @@ async def _apply_create_relationship(
     # Idempotent: if a non-deleted relationship of the same type already
     # exists between these two persons (in either direction for symmetric
     # types), reuse it instead of inserting a duplicate. Same goes for the
-    # symmetric mirror — we only add the second row if it isn't already
+    # symmetric mirror, we only add the second row if it isn't already
     # present.
     existing = await _find_existing_relationship(
         session,
