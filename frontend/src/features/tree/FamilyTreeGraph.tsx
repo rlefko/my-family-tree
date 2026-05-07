@@ -203,6 +203,37 @@ function collectCouples(rels: RelationshipRow[]): Map<string, Union> {
   return couples;
 }
 
+/**
+ * Augment the couples map with implicit unions inferred from shared children.
+ * If A and B both have a `parent_of` edge to the same C, we treat (A, B) as
+ * a couple for layout purposes — joined by a heart, with C's edge coming
+ * down from the joiner — even if no explicit spouse_of / partner_of edge
+ * exists. Makes the tree visually cohesive when the user only entered the
+ * parent edges. Existing explicit couples are preserved as-is; we only add
+ * pairs that don't already have a union.
+ */
+function inferCouplesFromSharedChildren(
+  couples: Map<string, Union>,
+  parents: Map<string, string[]>,
+): Map<string, Union> {
+  const out = new Map(couples);
+  for (const [, parentList] of parents) {
+    if (parentList.length < 2) continue;
+    for (let i = 0; i < parentList.length; i++) {
+      for (let j = i + 1; j < parentList.length; j++) {
+        const a = parentList[i];
+        const b = parentList[j];
+        const key = couplesKey(a, b);
+        if (out.has(key)) continue;
+        const ids = [a, b];
+        ids.sort();
+        out.set(key, { id: `union:${key}`, a: ids[0], b: ids[1] });
+      }
+    }
+  }
+  return out;
+}
+
 function collectParentsByChild(rels: RelationshipRow[]): Map<string, string[]> {
   const out = new Map<string, string[]>();
   for (const r of rels) {
@@ -282,9 +313,13 @@ export function buildLayout(
   graph: TreeGraph,
   opts: LayoutOpts = {},
 ): { nodes: Node[]; edges: Edge[] } {
-  const couples = collectCouples(graph.relationships);
+  const explicitCouples = collectCouples(graph.relationships);
   const directParents = collectParentsByChild(graph.relationships);
   const parents = inferSiblingParents(directParents, graph.relationships);
+  // Add inferred couples for any pair of parents that share a child but
+  // don't already have an explicit spouse/partner edge. Keeps the tree
+  // visually cohesive without requiring the user to assert a marriage.
+  const couples = inferCouplesFromSharedChildren(explicitCouples, parents);
 
   // Index couple events by sorted (a,b) pair so the union node can show date/place.
   const coupleEventByPair = new Map<

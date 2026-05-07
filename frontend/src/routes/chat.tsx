@@ -71,18 +71,7 @@ function ChatPage() {
               here in chat.
             </p>
           </div>
-          {busy ? <RunningStatus onStop={stop} /> : null}
         </header>
-
-        {busy ? (
-          <div
-            className="h-0.5 w-full overflow-hidden bg-indigo-100"
-            aria-label="Working"
-            title="Working"
-          >
-            <div className="h-full w-1/3 animate-progress-stripe bg-indigo-500" />
-          </div>
-        ) : null}
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto bg-zinc-50/50 px-4 py-6 sm:px-6">
           {turns.length === 0 ? (
@@ -147,24 +136,6 @@ function ChatPage() {
         </form>
       </div>
     </section>
-  );
-}
-
-function RunningStatus({ onStop }: { onStop: () => void }) {
-  return (
-    <div className="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700">
-      <Loader2 className="h-3 w-3 animate-spin" />
-      <span>Agent running...</span>
-      <button
-        type="button"
-        onClick={onStop}
-        className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-white px-2 py-0.5 text-[11px] font-medium text-indigo-700 hover:bg-indigo-100"
-        aria-label="Stop the agent"
-      >
-        <Square className="h-2.5 w-2.5" />
-        Stop
-      </button>
-    </div>
   );
 }
 
@@ -236,6 +207,7 @@ function Bubble({ turn }: { turn: ChatTurn }) {
   const proposalIds = turn.proposalIds ?? [];
   const hasContent = !!turn.content;
   const hasThinking = !!turn.thinking;
+  const hasTrace = hasThinking || toolCalls.length > 0;
   const isQuiet = !hasContent && toolCalls.length === 0;
   const runningTool = toolCalls.find((c) => c.status === "running");
   const turnDone = !turn.pending;
@@ -250,19 +222,21 @@ function Bubble({ turn }: { turn: ChatTurn }) {
             : "rounded-bl-sm border border-zinc-200 bg-white text-zinc-900",
       )}
     >
-      {!isUser && hasThinking ? (
-        <ThinkingPill
-          text={turn.thinking ?? ""}
-          live={Boolean(turn.pending)}
-          collapsed={turnDone}
-        />
-      ) : null}
-      {toolCalls.length > 0 ? (
-        <div className="mb-2 flex flex-col gap-1">
-          {toolCalls.map((call) => (
-            <ToolCallCard key={call.id} call={call} turnDone={turnDone} />
-          ))}
-        </div>
+      {!isUser && hasTrace && turnDone ? (
+        <CollapsedTrace thinking={turn.thinking ?? ""} toolCalls={toolCalls} />
+      ) : !isUser && hasTrace ? (
+        <>
+          {hasThinking ? (
+            <ThinkingPill text={turn.thinking ?? ""} live={Boolean(turn.pending)} />
+          ) : null}
+          {toolCalls.length > 0 ? (
+            <div className="mb-2 flex flex-col gap-1">
+              {toolCalls.map((call) => (
+                <ToolCallCard key={call.id} call={call} />
+              ))}
+            </div>
+          ) : null}
+        </>
       ) : null}
       {hasContent ? (
         isUser ? (
@@ -280,6 +254,35 @@ function Bubble({ turn }: { turn: ChatTurn }) {
       ) : null}
       {!isUser && proposalIds.length > 0 ? <InlineProposals ids={proposalIds} /> : null}
     </div>
+  );
+}
+
+function CollapsedTrace({
+  thinking,
+  toolCalls,
+}: {
+  thinking: string;
+  toolCalls: ChatTurn["toolCalls"];
+}) {
+  const calls = toolCalls ?? [];
+  const summary =
+    calls.length > 0
+      ? `Reasoned and used ${calls.length} tool${calls.length === 1 ? "" : "s"}`
+      : "Reasoning summary";
+  return (
+    <details className="group mb-2 rounded-md border border-zinc-200 bg-zinc-50 text-xs">
+      <summary className="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-zinc-700 marker:hidden">
+        <Brain className="h-3 w-3 text-amber-500" />
+        <span className="font-medium">{summary}</span>
+        <ChevronDown className="ml-auto h-3.5 w-3.5 text-zinc-400 transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="space-y-1 border-t border-zinc-200 p-2">
+        {thinking ? <ThinkingPill text={thinking} live={false} /> : null}
+        {calls.map((call) => (
+          <ToolCallCard key={call.id} call={call} />
+        ))}
+      </div>
+    </details>
   );
 }
 
