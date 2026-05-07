@@ -16,7 +16,7 @@ import {
 
 import { cn } from "@/lib/utils";
 
-import type { ToolCall } from "./useChatStream";
+import type { ToolCall } from "./ChatStreamProvider";
 
 const STATUS_LABEL: Record<ToolCall["status"], string> = {
   running: "running",

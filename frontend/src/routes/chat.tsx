@@ -16,7 +16,7 @@ import { useConversations } from "@/api/endpoints/conversations";
 import { Tooltip } from "@/components/ui/tooltip";
 import { InlineProposals } from "@/features/chat/InlineProposals";
 import { ToolCallCard } from "@/features/chat/ToolCallCard";
-import { useChatStream, type ChatTurn } from "@/features/chat/useChatStream";
+import { useChatStream, type ChatTurn } from "@/features/chat/ChatStreamProvider";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/chat")({
@@ -24,7 +24,8 @@ export const Route = createFileRoute("/chat")({
 });
 
 function ChatPage() {
-  const { turns, busy, send, stop, newChat, switchConversation, conversationId } = useChatStream();
+  const { turns, busy, send, stop, newChat, switchConversation, conversationId, markSeen } =
+    useChatStream();
   const conversations = useConversations();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -33,6 +34,11 @@ function ChatPage() {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [turns]);
+
+  // Clear the "new chat result" badge as soon as the user lands here.
+  useEffect(() => {
+    markSeen();
+  }, [markSeen, turns]);
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {

@@ -3,6 +3,7 @@ import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { Toaster } from "sonner";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { queryClient } from "@/lib/query-client";
@@ -26,6 +27,7 @@ ReactDOM.createRoot(root).render(
     <QueryClientProvider client={queryClient}>
       <TooltipProvider delayDuration={150} skipDelayDuration={300}>
         <RouterProvider router={router} />
+        <Toaster position="bottom-right" richColors closeButton />
         {import.meta.env.DEV ? <ReactQueryDevtools initialIsOpen={false} /> : null}
       </TooltipProvider>
     </QueryClientProvider>
