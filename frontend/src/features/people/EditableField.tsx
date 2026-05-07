@@ -64,11 +64,17 @@ export function EditableField(props: Props) {
 
   async function commit(next: string | null) {
     if (props.type === "boolean") return;
-    if ((next ?? "") === (typeof value === "string" ? value : "")) {
+    const candidate = (next ?? "").trim();
+    const current = (typeof value === "string" ? value : "").trim();
+    if (candidate === current) {
       setEditing(false);
       return;
     }
-    await props.onSave(next ?? "" === "" ? null : next);
+    // Empty string -> null so the backend can clear the field; non-empty
+    // strings flow through unchanged. Without the trim() + ternary the old
+    // implementation always sent null due to JS operator precedence
+    // (`a ?? "" === "" ? null : a` parses as `(a ?? true) ? null : a`).
+    await props.onSave(candidate === "" ? null : candidate);
     setEditing(false);
   }
 

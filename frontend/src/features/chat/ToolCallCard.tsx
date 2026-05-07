@@ -53,11 +53,25 @@ function ToolIcon({ name }: { name: string }) {
   return <Hammer className={className} />;
 }
 
-export function ToolCallCard({ call }: { call: ToolCall }) {
+export function ToolCallCard({
+  call,
+  turnDone,
+}: {
+  call: ToolCall;
+  turnDone?: boolean;
+}) {
   const hasInput = call.input !== undefined && call.input !== null;
   const hasOutput = call.output !== undefined && call.output !== null;
+  // Open while the turn is still streaming or this specific call is running,
+  // so the user sees what's happening live. Once the turn is done, collapse
+  // by default — user can click the chevron to expand and inspect.
+  const initiallyOpen = !turnDone || call.status === "running";
   return (
-    <details className="group rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-xs">
+    <details
+      key={`${call.id}:${turnDone ? "done" : "live"}`}
+      open={initiallyOpen}
+      className="group rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-xs"
+    >
       <summary className="flex cursor-pointer items-center gap-2 text-zinc-700 marker:hidden">
         <ToolIcon name={call.name} />
         <span className="font-mono">{call.name}</span>

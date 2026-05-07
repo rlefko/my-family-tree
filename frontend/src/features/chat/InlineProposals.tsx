@@ -83,35 +83,43 @@ function labelFor(p: ProposalRow): string {
 }
 
 export function InlineProposals({ ids }: { ids: string[] }) {
-  const { data } = useProposals(null);
+  // `null` = no status filter, returns proposals across every status so an
+  // approved/rejected row stays visible (with its badge) instead of falling
+  // out of the fetch and triggering a "loading..." flash.
+  const { data, isLoading } = useProposals(null);
   const approveMutation = useApproveProposal();
   const rejectMutation = useRejectProposal();
   const approveBatch = useApproveBatch();
 
   const matched = useMemo(() => {
     if (!data) return [] as ProposalRow[];
-    const set = new Set(ids);
     const byId = new Map<string, ProposalRow>(data.items.map((p) => [p.id, p]));
-    return ids.map((id) => byId.get(id)).filter((p): p is ProposalRow => Boolean(p && set.has(p.id)));
+    return ids.map((id) => byId.get(id)).filter((p): p is ProposalRow => Boolean(p));
   }, [data, ids]);
 
   if (ids.length === 0) return null;
-  if (matched.length === 0) {
-    // Proposals fetch hasn't loaded yet; show a lightweight placeholder.
+  if (isLoading && matched.length === 0) {
     return (
       <div className="mt-3 rounded-md border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-xs text-indigo-700">
         Loading {ids.length} queued proposal{ids.length === 1 ? "" : "s"}...
       </div>
     );
   }
+  if (matched.length === 0) {
+    // Loaded but the proposals are gone (deleted out-of-band). Stay quiet.
+    return null;
+  }
 
   const pending = matched.filter((p) => p.status === "pending");
+  const allResolved = pending.length === 0;
 
   return (
     <div className="mt-3 rounded-md border border-indigo-100 bg-indigo-50/40 p-2">
       <div className="flex items-center justify-between gap-2 px-1.5 pb-1.5">
         <span className="text-xs font-medium text-indigo-900">
-          Queued {matched.length} proposal{matched.length === 1 ? "" : "s"}
+          {allResolved
+            ? `${matched.length} proposal${matched.length === 1 ? "" : "s"} resolved`
+            : `${matched.length} proposal${matched.length === 1 ? "" : "s"} (${pending.length} pending)`}
         </span>
         <div className="flex items-center gap-2">
           {pending.length > 1 ? (

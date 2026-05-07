@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import {
   Brain,
+  ChevronDown,
   Loader2,
   MessageSquarePlus,
   Send,
@@ -238,6 +239,7 @@ function Bubble({ turn }: { turn: ChatTurn }) {
   const hasThinking = !!turn.thinking;
   const isQuiet = !hasContent && toolCalls.length === 0;
   const runningTool = toolCalls.find((c) => c.status === "running");
+  const turnDone = !turn.pending;
   return (
     <div
       className={cn(
@@ -250,12 +252,16 @@ function Bubble({ turn }: { turn: ChatTurn }) {
       )}
     >
       {!isUser && hasThinking ? (
-        <ThinkingPill text={turn.thinking ?? ""} live={Boolean(turn.pending)} />
+        <ThinkingPill
+          text={turn.thinking ?? ""}
+          live={Boolean(turn.pending)}
+          collapsed={turnDone}
+        />
       ) : null}
       {toolCalls.length > 0 ? (
         <div className="mb-2 flex flex-col gap-1">
           {toolCalls.map((call) => (
-            <ToolCallCard key={call.id} call={call} />
+            <ToolCallCard key={call.id} call={call} turnDone={turnDone} />
           ))}
         </div>
       ) : null}
@@ -301,10 +307,35 @@ function BusyFooter({
   );
 }
 
-function ThinkingPill({ text, live }: { text: string; live: boolean }) {
+function ThinkingPill({
+  text,
+  live,
+  collapsed,
+}: {
+  text: string;
+  live: boolean;
+  collapsed?: boolean;
+}) {
   // Show only the last few lines of the reasoning summary so the bubble
-  // doesn't grow unbounded while the model deliberates.
+  // doesn't grow unbounded while the model deliberates. After the turn
+  // finishes, render as a collapsed `<details>` that the user can re-open.
   const tail = text.split(/\n+/).filter(Boolean).slice(-3).join(" · ");
+  if (collapsed) {
+    return (
+      <details className="group mb-2 rounded-md border border-amber-200 bg-amber-50/70 text-[11px] text-amber-900">
+        <summary className="flex cursor-pointer items-center gap-1.5 px-2 py-1 marker:hidden">
+          <Brain className="h-3 w-3 text-amber-600" />
+          <span className="font-medium">Thinking summary</span>
+          <ChevronDown className="ml-auto h-3 w-3 text-amber-600 transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="border-t border-amber-200 px-2 py-1 text-amber-900">
+          <pre className="max-h-48 overflow-auto whitespace-pre-wrap font-sans text-[11px] leading-snug">
+            {text || "(no summary)"}
+          </pre>
+        </div>
+      </details>
+    );
+  }
   return (
     <Tooltip
       content="OpenAI's reasoning summary while it deliberates. Raw thinking is never persisted; only the summary is shown."

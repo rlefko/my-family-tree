@@ -9,7 +9,7 @@
  * just confirmed it.
  */
 
-import { Calendar, Loader2, MapPin, Plus, Trash2 } from "lucide-react";
+import { Calendar, Loader2, MapPin, Plus, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -19,6 +19,7 @@ import {
   useAddRelationship,
   useAppendNote,
   useDeletePerson,
+  useDeleteRelationship,
   usePeople,
   usePerson,
   usePersonDocuments,
@@ -116,6 +117,7 @@ function DrawerBody({
   const deleteMutation = useDeletePerson();
   const noteMutation = useAppendNote();
   const addRelMutation = useAddRelationship();
+  const deleteRelMutation = useDeleteRelationship();
   const addEventMutation = useAddEvent();
   const updateMutation = useUpdatePerson();
   const allPeople = usePeople();
@@ -198,6 +200,8 @@ function DrawerBody({
               addRelMutation.mutate(args, { onSuccess: () => setAdding(false) });
             }}
             submitting={addRelMutation.isPending}
+            onDelete={(id) => deleteRelMutation.mutate(id)}
+            deletingId={deleteRelMutation.isPending ? deleteRelMutation.variables ?? null : null}
           />
         ) : tab === "events" ? (
           <EventsPanel
@@ -461,6 +465,8 @@ function RelationshipsPanel({
   onCancel,
   onSubmit,
   submitting,
+  onDelete,
+  deletingId,
 }: {
   personId: string;
   edges: RelationshipEdge[];
@@ -476,6 +482,8 @@ function RelationshipsPanel({
     direction: "outgoing" | "incoming";
   }) => void;
   submitting: boolean;
+  onDelete: (relationshipId: string) => void;
+  deletingId: string | null;
 }) {
   const grouped = useMemo(() => {
     const buckets = new Map<string, RelationshipEdge[]>();
@@ -508,13 +516,32 @@ function RelationshipsPanel({
               {items.map((e) => (
                 <li
                   key={e.id}
-                  className="flex items-center justify-between rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs"
+                  className="flex items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs"
                 >
-                  <span className="font-medium text-zinc-900">{e.other.display_name}</span>
-                  <Tooltip content={`Confidence in this relationship: ${e.confidence}/100. 100 means asserted directly by the user; lower numbers reflect inferences from documents or chat.`}>
+                  <span className="flex-1 font-medium text-zinc-900">
+                    {e.other.display_name}
+                  </span>
+                  <Tooltip
+                    content={`Confidence in this relationship: ${e.confidence}/100. 100 means asserted directly by the user; lower numbers reflect inferences from documents or chat.`}
+                  >
                     <span className="cursor-help text-[10px] uppercase tracking-wide text-zinc-400">
                       {e.confidence}%
                     </span>
+                  </Tooltip>
+                  <Tooltip content="Remove this relationship">
+                    <button
+                      type="button"
+                      onClick={() => onDelete(e.id)}
+                      disabled={deletingId === e.id}
+                      aria-label="Delete relationship"
+                      className="rounded p-1 text-zinc-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                    >
+                      {deletingId === e.id ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <X className="h-3 w-3" />
+                      )}
+                    </button>
                   </Tooltip>
                 </li>
               ))}

@@ -37,6 +37,7 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 
 import type { PersonNode, RelationshipRow, TreeGraph } from "@/api/endpoints/relationships";
+import { personInitials } from "@/lib/names";
 import { cn } from "@/lib/utils";
 
 const NODE_WIDTH = 220;
@@ -49,29 +50,42 @@ const SIBLING_TYPE = "sibling_of";
 
 type PersonCardProps = NodeProps<{ person: PersonNode; onSelect?: (id: string) => void }>;
 
+function SexBadge({ sex, className }: { sex: PersonNode["sex"]; className?: string }) {
+  // Unicode gender glyphs read clean at small sizes and don't depend on a
+  // specific lucide-react version (Mars/Venus icons aren't in 0.468.x).
+  const glyph = sex === "male" ? "♂" : sex === "female" ? "♀" : "?";
+  const tone =
+    sex === "male" ? "text-sky-700" : sex === "female" ? "text-rose-700" : "text-zinc-500";
+  return (
+    <span
+      aria-label={`sex: ${sex}`}
+      className={cn("text-sm font-bold leading-none", tone, className)}
+    >
+      {glyph}
+    </span>
+  );
+}
+
 function PersonCard({ data, selected, id }: PersonCardProps) {
   const { person, onSelect } = data;
-  const sexBadge = person.sex === "male" ? "M" : person.sex === "female" ? "F" : "?";
   const cardBg =
     person.sex === "male"
       ? "bg-sky-50 border-sky-200"
       : person.sex === "female"
         ? "bg-rose-50 border-rose-200"
         : "bg-zinc-50 border-zinc-200";
-  const chip =
+  const chipBg =
     person.sex === "male"
       ? "bg-sky-100 text-sky-700"
       : person.sex === "female"
         ? "bg-rose-100 text-rose-700"
         : "bg-zinc-100 text-zinc-600";
-  const initials = person.display_name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase() ?? "")
-    .join("");
+  const initials = personInitials(person);
   const dates =
-    [person.birth_text ? `b. ${person.birth_text}` : null, person.death_text ? `d. ${person.death_text}` : null]
+    [
+      person.birth_text ? `b. ${person.birth_text}` : null,
+      person.death_text ? `d. ${person.death_text}` : null,
+    ]
       .filter(Boolean)
       .join(" • ") || (person.is_living ? "living" : "");
 
@@ -88,16 +102,26 @@ function PersonCard({ data, selected, id }: PersonCardProps) {
     >
       <Handle type="target" position={Position.Top} className="!h-2 !w-2 !bg-zinc-400" />
       <Handle type="source" position={Position.Bottom} className="!h-2 !w-2 !bg-zinc-400" />
-      <Handle id="left" type="source" position={Position.Left} className="!h-2 !w-2 !bg-pink-400" />
-      <Handle id="right" type="source" position={Position.Right} className="!h-2 !w-2 !bg-pink-400" />
+      <Handle
+        id="left"
+        type="source"
+        position={Position.Left}
+        className="!h-2 !w-2 !bg-pink-400"
+      />
+      <Handle
+        id="right"
+        type="source"
+        position={Position.Right}
+        className="!h-2 !w-2 !bg-pink-400"
+      />
 
       <div
         className={cn(
           "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold",
-          chip,
+          chipBg,
         )}
       >
-        {initials || "?"}
+        {initials}
       </div>
       <div className="min-w-0 flex-1">
         <div className="break-words font-medium leading-tight text-zinc-900">
@@ -105,8 +129,13 @@ function PersonCard({ data, selected, id }: PersonCardProps) {
         </div>
         {dates ? <div className="mt-0.5 text-[10px] text-zinc-500">{dates}</div> : null}
       </div>
-      <span className={cn("shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold", chip)}>
-        {sexBadge}
+      <span
+        className={cn(
+          "inline-flex shrink-0 items-center justify-center rounded-full p-1",
+          chipBg,
+        )}
+      >
+        <SexBadge sex={person.sex} />
       </span>
     </button>
   );

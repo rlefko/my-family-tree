@@ -35,6 +35,34 @@ export function displayMatchesStructured(p: {
   return normalize(structured) === normalize(p.display_name);
 }
 
+/**
+ * Build a 1- or 2-character initial badge: first-name initial plus last-name
+ * initial. Falls back to just the first-name initial when there's no surname.
+ *
+ * Tries the structured fields first (`given_names`, `surname`); if either is
+ * missing, falls back to the display name parsed as "First [...] Last" — the
+ * first token's initial paired with the last token's initial. Never blends
+ * middle names into the badge.
+ */
+export function personInitials(p: {
+  display_name: string;
+  given_names?: string | null;
+  surname?: string | null;
+}): string {
+  const firstChar = (s: string | null | undefined) =>
+    (s ?? "").trim().split(/\s+/)[0]?.[0]?.toUpperCase() ?? "";
+
+  const firstInitial = firstChar(p.given_names) || firstChar(p.display_name);
+
+  let lastInitial = firstChar(p.surname);
+  if (!lastInitial) {
+    const parts = (p.display_name ?? "").trim().split(/\s+/).filter(Boolean);
+    if (parts.length > 1) lastInitial = parts[parts.length - 1][0]?.toUpperCase() ?? "";
+  }
+
+  return `${firstInitial}${lastInitial}` || "?";
+}
+
 function normalize(s: string): string {
   return s.replace(/\s+/g, " ").trim().toLowerCase();
 }

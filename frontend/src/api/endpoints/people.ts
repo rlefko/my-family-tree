@@ -221,6 +221,23 @@ export function useAppendNote() {
   });
 }
 
+export function useDeleteRelationship() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (relationshipId: string) =>
+      apiFetch<{ proposal_id: string; status: string }>(
+        `/api/v1/relationships/${relationshipId}`,
+        { method: "DELETE" },
+      ),
+    onSuccess: () => {
+      // Invalidate everything that could surface this edge: the people list,
+      // every person's relationships subquery, and the tree graph.
+      qc.invalidateQueries({ queryKey: ["people"] });
+      qc.invalidateQueries({ queryKey: ["tree-graph"] });
+    },
+  });
+}
+
 export function useAddRelationship() {
   const qc = useQueryClient();
   return useMutation({
