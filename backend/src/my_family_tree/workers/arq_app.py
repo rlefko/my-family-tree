@@ -7,8 +7,12 @@ from typing import Any, ClassVar
 from arq.connections import RedisSettings
 
 from my_family_tree.core.config import get_settings
+from my_family_tree.core.errors import LLMProviderError
 from my_family_tree.core.logging import configure_logging, get_logger
 from my_family_tree.db.session import make_engine, make_sessionmaker
+from my_family_tree.embed.client import build_embeddings_client
+from my_family_tree.llm.vision_client import build_vision_client
+from my_family_tree.llm.vision_ledger import VisionLedger
 from my_family_tree.storage.s3 import build_object_store
 from my_family_tree.workers.jobs.ingest_document import ingest_document
 
@@ -22,6 +26,13 @@ async def startup(ctx: dict[str, Any]) -> None:
     ctx["engine"] = engine
     ctx["session_factory"] = make_sessionmaker(engine)
     ctx["storage"] = build_object_store(settings.s3)
+    try:
+        ctx["embeddings_client"] = build_embeddings_client(settings.llm)
+    except LLMProviderError as e:
+        log.warning("worker.embeddings_unavailable", error=str(e))
+        ctx["embeddings_client"] = None
+    ctx["vision_client"] = build_vision_client(settings)
+    ctx["vision_ledger"] = VisionLedger(cap_usd=settings.ocr.vision_fallback_daily_usd_cap)
     log.info("worker.startup", env=settings.app_env)
 
 

@@ -1,11 +1,15 @@
-"""Chunk retrieval: vector search and hybrid search (vector + FTS via RRF)."""
+"""Chunk retrieval: vector search and hybrid search (vector + FTS via RRF).
+
+The vector path stays inline; the hybrid path delegates to
+`retrieve.hybrid.hybrid_search` so the REST endpoint and MCP tool share one
+implementation."""
 
 from __future__ import annotations
 
 from uuid import UUID
 
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select, text
+from sqlalchemy import select
 
 from my_family_tree.db.session import session_scope
 from my_family_tree.mcp.host import ToolContext
@@ -13,6 +17,7 @@ from my_family_tree.mcp.registry import Capability, get_registry
 from my_family_tree.mcp.schemas import RetrievedChunk
 from my_family_tree.models.chunk import Chunk
 from my_family_tree.models.document import Document
+from my_family_tree.retrieve.hybrid import hybrid_search as retrieve_hybrid_search
 
 registry = get_registry()
 
@@ -42,7 +47,7 @@ async def vector_search(ctx: ToolContext, payload: VectorSearchInput) -> VectorS
         # `<=>` is the cosine distance operator from pgvector.
         distance = Chunk.embedding_half.op("<=>")(payload.embedding).label("distance")
         stmt = (
-            select(Chunk, distance)
+            select(Chunk, Document.original_filename, Document.kind, distance)
             .join(Document, Document.id == Chunk.document_id)
             .where(Document.tree_id == ctx.tree_id)
         )
@@ -58,6 +63,8 @@ async def vector_search(ctx: ToolContext, payload: VectorSearchInput) -> VectorS
                     page=row.Chunk.page,
                     content=row.Chunk.content,
                     score=1.0 - float(row.distance),
+                    document_filename=row.original_filename,
+                    document_kind=row.kind.value,
                 )
                 for row in rows
             ]
@@ -69,6 +76,7 @@ class HybridSearchInput(BaseModel):
     embedding: list[float] | None = None
     k: int = Field(default=10, ge=1, le=100)
     k_rrf: int = Field(default=60, ge=1, le=1000)
+    document_id: UUID | None = None
 
 
 class HybridSearchOutput(BaseModel):
@@ -79,7 +87,8 @@ class HybridSearchOutput(BaseModel):
     name="hybrid_search",
     description=(
         "Hybrid search over chunks. Fuses vector similarity (if `embedding` "
-        "provided) with Postgres FTS via Reciprocal Rank Fusion."
+        "provided) with Postgres FTS via Reciprocal Rank Fusion. Optionally "
+        "scope to a single `document_id`."
     ),
     input_model=HybridSearchInput,
     output_model=HybridSearchOutput,
@@ -87,77 +96,26 @@ class HybridSearchOutput(BaseModel):
 )
 async def hybrid_search(ctx: ToolContext, payload: HybridSearchInput) -> HybridSearchOutput:
     async with session_scope(ctx.session_factory) as session:
-        # FTS rank: ts_rank_cd over the generated tsv column.
-        fts_stmt = text(
-            """
-            SELECT chunk.id AS chunk_id,
-                   chunk.document_id,
-                   chunk.page,
-                   chunk.content,
-                   ts_rank_cd(chunk.tsv, plainto_tsquery('english', :q)) AS rank
-              FROM chunk
-              JOIN document ON document.id = chunk.document_id
-             WHERE document.tree_id = :tree_id
-               AND chunk.tsv @@ plainto_tsquery('english', :q)
-             ORDER BY rank DESC
-             LIMIT :k3
-            """
+        hits = await retrieve_hybrid_search(
+            session,
+            tree_id=ctx.tree_id,
+            query=payload.query,
+            embedding=payload.embedding,
+            k=payload.k,
+            k_rrf=payload.k_rrf,
+            document_id=payload.document_id,
         )
-        fts_rows = (
-            (
-                await session.execute(
-                    fts_stmt,
-                    {"q": payload.query, "tree_id": ctx.tree_id, "k3": payload.k * 3},
-                )
-            )
-            .mappings()
-            .all()
-        )
-
-        scores: dict[UUID, float] = {}
-        sources: dict[UUID, dict] = {}
-        for rank, row in enumerate(fts_rows, start=1):
-            cid = row["chunk_id"]
-            sources[cid] = dict(row)
-            scores[cid] = scores.get(cid, 0.0) + 1.0 / (payload.k_rrf + rank)
-
-        if payload.embedding is not None:
-            distance = Chunk.embedding_half.op("<=>")(payload.embedding).label("distance")
-            vec_stmt = (
-                select(Chunk, distance)
-                .join(Document, Document.id == Chunk.document_id)
-                .where(Document.tree_id == ctx.tree_id)
-                .order_by(distance.asc())
-                .limit(payload.k * 3)
-            )
-            vec_rows = (await session.execute(vec_stmt)).all()
-            for rank, row in enumerate(vec_rows, start=1):
-                cid = row.Chunk.id
-                sources.setdefault(
-                    cid,
-                    {
-                        "chunk_id": cid,
-                        "document_id": row.Chunk.document_id,
-                        "page": row.Chunk.page,
-                        "content": row.Chunk.content,
-                    },
-                )
-                scores[cid] = scores.get(cid, 0.0) + 1.0 / (payload.k_rrf + rank)
-
-        ranked = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)[: payload.k]
         return HybridSearchOutput(
             results=[
                 RetrievedChunk(
-                    chunk_id=cid,
-                    document_id=sources[cid]["document_id"],
-                    page=sources[cid].get("page"),
-                    content=sources[cid]["content"],
-                    score=score,
+                    chunk_id=h.chunk_id,
+                    document_id=h.document_id,
+                    page=h.page,
+                    content=h.content,
+                    score=h.score,
+                    document_filename=h.document_filename,
+                    document_kind=h.document_kind,
                 )
-                for cid, score in ranked
+                for h in hits
             ]
         )
-
-
-# Suppress unused-func warning.
-_ = func

@@ -101,3 +101,5 @@ class RetrievedChunk(BaseModel):
     page: int | None = None
     content: str
     score: float
+    document_filename: str | None = None
+    document_kind: str | None = None
