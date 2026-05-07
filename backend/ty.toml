@@ -1,0 +1,27 @@
+# ty (Astral typechecker) configuration. ty is alpha; rules and config schema
+# may change. We pin ty aggressively in pyproject so behavior stays stable
+# between bumps.
+#
+# SQLAlchemy 2.0's typed `Mapped[...]` attributes confuse ty's narrowing in
+# several places (Column.op, Column.desc, Select.where with ColumnElement, etc.)
+# so we downgrade those rules to `warn` for now and rely on SQLAlchemy's own
+# query plan / runtime checks. As ty matures we re-enable them.
+
+[environment]
+python-version = "3.14"
+root = ["src", "tests"]
+
+[src]
+include = ["src", "tests"]
+exclude = [
+  "src/my_family_tree/db/migrations/versions",
+  "**/__pycache__",
+]
+
+[rules]
+unresolved-import = "error"
+invalid-argument-type = "warn"
+unresolved-attribute = "warn"
+no-matching-overload = "warn"
+invalid-type-form = "warn"
+unsupported-operator = "warn"

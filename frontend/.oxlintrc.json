@@ -1,0 +1,50 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxlint/configuration_schema.json",
+  "plugins": ["react", "typescript", "unicorn", "import"],
+  "categories": {
+    "correctness": "error",
+    "perf": "warn",
+    "suspicious": "warn",
+    "pedantic": "off",
+    "restriction": "off",
+    "style": "off",
+    "nursery": "off"
+  },
+  "env": {
+    "browser": true,
+    "es2024": true,
+    "node": true
+  },
+  "rules": {
+    "no-console": "off",
+    "no-debugger": "error",
+    "react/react-in-jsx-scope": "off",
+    "react/jsx-key": "error",
+    "react/no-array-index-key": "warn",
+    "react/no-children-prop": "error",
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "warn",
+    "typescript/no-explicit-any": "warn",
+    "typescript/no-non-null-assertion": "warn",
+    "import/no-duplicates": "error",
+    "import/no-unassigned-import": "off"
+  },
+  "overrides": [
+    {
+      "files": ["scripts/**/*.{js,mjs}"],
+      "rules": {
+        "no-console": "off"
+      }
+    }
+  ],
+  "ignorePatterns": [
+    "dist",
+    "node_modules",
+    "src/routeTree.gen.ts",
+    "src/api/generated/**",
+    "vite.config.js",
+    "vite.config.d.ts",
+    "vitest.config.js",
+    "vitest.config.d.ts"
+  ]
+}
