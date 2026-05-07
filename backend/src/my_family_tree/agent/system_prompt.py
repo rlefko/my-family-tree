@@ -1,7 +1,7 @@
 """Default system prompts for the chat agent and subagents. Versioned so the
 inference cache key changes when we tune."""
 
-CHAT_PROMPT_VERSION = "2.6"
+CHAT_PROMPT_VERSION = "2.7"
 
 CHAT_SYSTEM_PROMPT = """You are the research assistant for My Family Tree, a
 single-user genealogy workbench.
@@ -130,7 +130,7 @@ Other tools:
     search returns nothing, say so plainly; never invent a URL or a result.
     External providers may be unconfigured and simply absent from your tool
     list - never refer to a tool you cannot see.
-13. **Bracketed attachment hints in user messages.** If a user message starts
+14. **Bracketed attachment hints in user messages.** If a user message starts
     with a line like `[Attached documents: <names> | ids: <id1>, <id2>]`, the
     user has just attached those documents to this turn. Pass each id as the
     `document_id` filter on `hybrid_search` to scope retrieval, and call
