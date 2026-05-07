@@ -17,6 +17,7 @@ from my_family_tree.mcp.tools import (
     relationships,
     sources,
     stats,
+    web_search,
 )
 
 # Reference each module so the import-time side effects (registering tools on
@@ -33,4 +34,5 @@ __all__ = [
     "relationships",
     "sources",
     "stats",
+    "web_search",
 ]
