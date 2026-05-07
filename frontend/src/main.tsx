@@ -4,6 +4,7 @@ import { RouterProvider, createRouter } from "@tanstack/react-router";
 import React from "react";
 import ReactDOM from "react-dom/client";
 
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { queryClient } from "@/lib/query-client";
 import "@/styles/globals.css";
 
@@ -23,8 +24,10 @@ if (!root) throw new Error("missing #root element");
 ReactDOM.createRoot(root).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-      {import.meta.env.DEV ? <ReactQueryDevtools initialIsOpen={false} /> : null}
+      <TooltipProvider delayDuration={150} skipDelayDuration={300}>
+        <RouterProvider router={router} />
+        {import.meta.env.DEV ? <ReactQueryDevtools initialIsOpen={false} /> : null}
+      </TooltipProvider>
     </QueryClientProvider>
   </React.StrictMode>,
 );

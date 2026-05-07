@@ -1,6 +1,8 @@
 /**
- * Right-side slide-over panel built on Radix Dialog. Used by the People page
- * to surface a person's full detail without leaving the table.
+ * Right-side slide-over panel built on Radix Dialog. We intentionally pass
+ * `modal={false}` so opening the drawer does NOT trap focus or block clicks
+ * on the underlying table — the user can keep clicking rows to swap the
+ * drawer's contents without first closing the panel.
  */
 
 import * as DialogPrimitive from "@radix-ui/react-dialog";
@@ -9,7 +11,22 @@ import type { ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
-export const Drawer = DialogPrimitive.Root;
+export function Drawer({
+  open,
+  onOpenChange,
+  children,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  children: ReactNode;
+}) {
+  return (
+    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange} modal={false}>
+      {children}
+    </DialogPrimitive.Root>
+  );
+}
+
 export const DrawerTrigger = DialogPrimitive.Trigger;
 export const DrawerClose = DialogPrimitive.Close;
 
@@ -24,10 +41,16 @@ export function DrawerContent({
 }) {
   return (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="fixed inset-0 z-40 bg-zinc-900/30 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
       <DialogPrimitive.Content
+        // Non-modal: don't intercept pointer events outside the panel.
+        onInteractOutside={(e) => {
+          // Allow clicks anywhere outside the drawer to land on the page,
+          // including on the People table to swap the active person.
+          e.preventDefault();
+        }}
+        onPointerDownOutside={(e) => e.preventDefault()}
         className={cn(
-          "fixed inset-y-0 right-0 z-50 flex flex-col border-l border-zinc-200 bg-white shadow-xl outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right",
+          "fixed inset-y-0 right-0 z-40 flex flex-col border-l border-zinc-200 bg-white shadow-xl outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right",
           width,
           className,
         )}
@@ -45,11 +68,7 @@ export function DrawerContent({
 }
 
 export function DrawerHeader({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <div className={cn("border-b border-zinc-200 px-6 py-4", className)}>
-      {children}
-    </div>
-  );
+  return <div className={cn("border-b border-zinc-200 px-6 py-4", className)}>{children}</div>;
 }
 
 export function DrawerTitle({ children, className }: { children: ReactNode; className?: string }) {

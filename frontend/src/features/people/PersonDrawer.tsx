@@ -1,9 +1,12 @@
 /**
  * Right-side drawer for a single person. Three tabs: Details, Relationships,
- * Documents. Footer has Add Note, Add Relationship, and Delete actions.
+ * Documents. Footer holds Add Note and Delete actions; Relationships tab has
+ * an inline Add Relationship form.
  *
- * All write actions go through the proposal flow on the server but auto-apply
- * since the user clicked Save / Confirm here.
+ * Every visible field on the Details tab is editable in place — click a value
+ * to swap it for an input, Enter to save, Escape to cancel. Each save goes
+ * through the proposal flow on the server but auto-applies since the user
+ * just confirmed it.
  */
 
 import { Loader2, Plus, Trash2 } from "lucide-react";
@@ -19,7 +22,10 @@ import {
   usePerson,
   usePersonDocuments,
   usePersonRelationships,
+  useUpdatePerson,
+  type PersonDetail,
   type RelationshipEdge,
+  type UpdatePersonInput,
 } from "@/api/endpoints/people";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
@@ -29,7 +35,11 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
+import { Tooltip } from "@/components/ui/tooltip";
+import { displayMatchesStructured, parseName } from "@/lib/names";
 import { cn } from "@/lib/utils";
+
+import { EditableField } from "./EditableField";
 
 const REL_TYPES: { value: string; label: string; symmetric?: boolean }[] = [
   { value: "parent_of", label: "Parent of" },
@@ -61,7 +71,7 @@ export function PersonDrawer({
       }}
     >
       <DrawerContent>
-        {personId ? <DrawerBody personId={personId} tab={tab} setTab={setTab} /> : null}
+        {personId ? <DrawerBody key={personId} personId={personId} tab={tab} setTab={setTab} /> : null}
       </DrawerContent>
     </Drawer>
   );
@@ -82,6 +92,7 @@ function DrawerBody({
   const deleteMutation = useDeletePerson();
   const noteMutation = useAppendNote();
   const addRelMutation = useAddRelationship();
+  const updateMutation = useUpdatePerson();
   const allPeople = usePeople();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [noteDraft, setNoteDraft] = useState("");
@@ -96,17 +107,28 @@ function DrawerBody({
   }
 
   const p = detail.data;
+  const showStructuredSubtitle = !displayMatchesStructured(p) && (p.given_names || p.surname);
+
+  async function patch(update: UpdatePersonInput) {
+    await updateMutation.mutateAsync({ personId, patch: update });
+  }
 
   return (
     <>
       <DrawerHeader className="pr-12">
         <DrawerTitle>{p.display_name}</DrawerTitle>
-        <DrawerDescription>
-          {[p.given_names, p.surname].filter(Boolean).join(" ") || "No structured name"}
-          {" • "}
+        {showStructuredSubtitle ? (
+          <DrawerDescription>
+            {[p.given_names, p.surname].filter(Boolean).join(" ")}
+          </DrawerDescription>
+        ) : null}
+        <div className="mt-1 flex items-center gap-2 text-[11px] text-zinc-500">
           <span className="capitalize">{p.sex}</span>
-          {p.is_living ? " • Living" : " • Deceased"}
-        </DrawerDescription>
+          <span>·</span>
+          <span>{p.is_living ? "Living" : "Deceased"}</span>
+          <span>·</span>
+          <span className="capitalize">{p.status}</span>
+        </div>
       </DrawerHeader>
 
       <nav className="flex border-b border-zinc-200 px-6">
@@ -135,7 +157,7 @@ function DrawerBody({
 
       <div className="flex-1 overflow-y-auto px-6 py-4">
         {tab === "details" ? (
-          <DetailsPanel person={p} />
+          <DetailsPanel person={p} patch={patch} saving={updateMutation.isPending} />
         ) : tab === "relationships" ? (
           <RelationshipsPanel
             personId={personId}
@@ -146,9 +168,7 @@ function DrawerBody({
             adding={adding}
             onCancel={() => setAdding(false)}
             onSubmit={(args) => {
-              addRelMutation.mutate(args, {
-                onSuccess: () => setAdding(false),
-              });
+              addRelMutation.mutate(args, { onSuccess: () => setAdding(false) });
             }}
             submitting={addRelMutation.isPending}
           />
@@ -157,9 +177,12 @@ function DrawerBody({
         )}
       </div>
 
-      <footer className="border-t border-zinc-200 bg-zinc-50 px-6 py-3 space-y-2">
+      <footer className="space-y-2 border-t border-zinc-200 bg-zinc-50 px-6 py-3">
         <div>
-          <label htmlFor="add-note" className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+          <label
+            htmlFor="add-note"
+            className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500"
+          >
             Add a note
           </label>
           <div className="mt-1 flex gap-2">
@@ -168,7 +191,7 @@ function DrawerBody({
               rows={2}
               value={noteDraft}
               onChange={(e) => setNoteDraft(e.target.value)}
-              placeholder="Markdown is supported. Saved as a fresh note appended to the person's notes."
+              placeholder="Markdown supported. Appended to existing notes with a separator."
               className="flex-1 resize-none rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-xs shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
             />
             <button
@@ -204,7 +227,7 @@ function DrawerBody({
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
         title={`Delete ${p.display_name}?`}
-        description="This soft-deletes the person (status becomes hidden). Their relationships and claims stay in place for the audit trail. You can restore them from the database if needed."
+        description="Soft-deletes the person (status flips to hidden). Their relationships and claims stay in place for the audit trail. You can restore them from the database if needed."
         confirmLabel="Delete"
         busy={deleteMutation.isPending}
         onConfirm={() => {
@@ -217,21 +240,103 @@ function DrawerBody({
 
 function DetailsPanel({
   person,
+  patch,
+  saving,
 }: {
-  person: ReturnType<typeof usePerson>["data"] extends infer D ? NonNullable<D> : never;
+  person: PersonDetail;
+  patch: (input: UpdatePersonInput) => Promise<void>;
+  saving: boolean;
 }) {
+  const parsed = parseName(person.given_names, person.surname);
+
   return (
-    <div className="space-y-4">
-      <Field label="Display name" value={person.display_name} />
-      <Field label="Given names" value={person.given_names} />
-      <Field label="Surname" value={person.surname} />
-      <Field label="Surname at birth" value={person.surname_at_birth} />
-      <Field label="Suffix" value={person.suffix} />
-      <Field label="Sex" value={person.sex} />
-      <Field label="Birth" value={person.birth_text} />
-      <Field label="Death" value={person.death_text} />
-      <Field label="Status" value={person.status} />
-      <Field label="Aliases" value={person.aliases.length ? person.aliases.join(", ") : null} />
+    <div className="space-y-3">
+      <EditableField
+        label="Display name"
+        value={person.display_name}
+        saving={saving}
+        onSave={(v) => patch({ display_name: v })}
+        tooltip="The label shown everywhere — usually the full common name."
+      />
+      <EditableField
+        label="First name"
+        value={parsed.first}
+        saving={saving}
+        onSave={async (v) => {
+          // Rebuild given_names from new first + existing middle.
+          const next = [v ?? "", parsed.middle ?? ""].filter(Boolean).join(" ").trim();
+          await patch({ given_names: next || null });
+        }}
+      />
+      <EditableField
+        label="Middle name(s)"
+        value={parsed.middle}
+        saving={saving}
+        onSave={async (v) => {
+          const next = [parsed.first ?? "", v ?? ""].filter(Boolean).join(" ").trim();
+          await patch({ given_names: next || null });
+        }}
+        tooltip="Stored as part of given names; we split on whitespace for display."
+      />
+      <EditableField
+        label="Surname"
+        value={person.surname}
+        saving={saving}
+        onSave={(v) => patch({ surname: v })}
+      />
+      <EditableField
+        label="Surname at birth"
+        value={person.surname_at_birth}
+        saving={saving}
+        onSave={(v) => patch({ surname_at_birth: v })}
+        tooltip="Maiden / pre-marriage / pre-adoption surname, when different."
+      />
+      <EditableField
+        label="Suffix"
+        value={person.suffix}
+        saving={saving}
+        onSave={(v) => patch({ suffix: v })}
+        tooltip="Jr., Sr., III, etc."
+      />
+      <EditableField
+        label="Sex"
+        value={person.sex}
+        saving={saving}
+        type="select"
+        options={[
+          { value: "female", label: "Female" },
+          { value: "male", label: "Male" },
+          { value: "unknown", label: "Unknown" },
+        ]}
+        onSave={(v) => patch({ sex: (v as "male" | "female" | "unknown") || "unknown" })}
+      />
+      <EditableField
+        label="Birth"
+        value={person.birth_text}
+        saving={saving}
+        onSave={(v) => patch({ birth_text: v })}
+        tooltip="Free-form date: '1990-04-12', 'April 12 1990', 'circa 1942', '1942-1944' all parse."
+      />
+      <EditableField
+        label="Death"
+        value={person.death_text}
+        saving={saving}
+        onSave={(v) => patch({ death_text: v })}
+      />
+      <EditableField
+        label="Living"
+        value={person.is_living}
+        saving={saving}
+        type="boolean"
+        onSave={(v) => patch({ is_living: v })}
+      />
+
+      <Field
+        label="Aliases"
+        value={person.aliases.length ? person.aliases.join(", ") : null}
+        tooltip="Other names this person is known by. Add via the chat for now."
+      />
+
       <div>
         <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
           Notes
@@ -241,18 +346,40 @@ function DetailsPanel({
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{person.notes_md}</ReactMarkdown>
           </div>
         ) : (
-          <div className="text-xs italic text-zinc-400">No notes yet.</div>
+          <div className="text-xs italic text-zinc-400">
+            No notes yet. Use the &ldquo;Add a note&rdquo; box below.
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-function Field({ label, value }: { label: string; value: string | null | undefined }) {
+function Field({
+  label,
+  value,
+  tooltip,
+}: {
+  label: string;
+  value: string | null | undefined;
+  tooltip?: string;
+}) {
+  const labelEl = (
+    <span
+      className={cn(
+        "text-[11px] font-semibold uppercase tracking-wide text-zinc-500",
+        tooltip ? "border-b border-dotted border-zinc-300 cursor-help" : "",
+      )}
+    >
+      {label}
+    </span>
+  );
   return (
     <div>
-      <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">{label}</div>
-      <div className="text-sm text-zinc-900">{value || <span className="italic text-zinc-400">—</span>}</div>
+      <div className="mb-1">{tooltip ? <Tooltip content={tooltip}>{labelEl}</Tooltip> : labelEl}</div>
+      <div className={cn("text-sm", value ? "text-zinc-900" : "italic text-zinc-400")}>
+        {value || "—"}
+      </div>
     </div>
   );
 }
@@ -305,7 +432,9 @@ function RelationshipsPanel({
       list.push(e);
       buckets.set(phrase, list);
     }
-    return [...buckets.entries()].sort(([a], [b]) => a.localeCompare(b));
+    const entries = [...buckets.entries()];
+    entries.sort(([a], [b]) => a.localeCompare(b));
+    return entries;
   }, [edges]);
 
   return (
@@ -329,9 +458,11 @@ function RelationshipsPanel({
                   className="flex items-center justify-between rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs"
                 >
                   <span className="font-medium text-zinc-900">{e.other.display_name}</span>
-                  <span className="text-[10px] uppercase tracking-wide text-zinc-400">
-                    {e.confidence}%
-                  </span>
+                  <Tooltip content={`Confidence in this relationship: ${e.confidence}/100. 100 means asserted directly by the user; lower numbers reflect inferences from documents or chat.`}>
+                    <span className="cursor-help text-[10px] uppercase tracking-wide text-zinc-400">
+                      {e.confidence}%
+                    </span>
+                  </Tooltip>
                 </li>
               ))}
             </ul>
@@ -473,9 +604,11 @@ function DocumentsPanel({
             <div className="text-[10px] uppercase tracking-wide text-zinc-400">{d.kind}</div>
             {d.citation ? <div className="mt-0.5 text-zinc-600">{d.citation}</div> : null}
           </div>
-          <span className="shrink-0 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-700">
-            {d.claim_count} claim{d.claim_count === 1 ? "" : "s"}
-          </span>
+          <Tooltip content={`This document contributed ${d.claim_count} claim${d.claim_count === 1 ? "" : "s"} about this person.`}>
+            <span className="shrink-0 cursor-help rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-700">
+              {d.claim_count} claim{d.claim_count === 1 ? "" : "s"}
+            </span>
+          </Tooltip>
         </li>
       ))}
     </ul>

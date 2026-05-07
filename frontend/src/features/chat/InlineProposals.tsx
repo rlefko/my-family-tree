@@ -31,6 +31,7 @@ import {
   useRejectProposal,
   type ProposalRow,
 } from "@/api/endpoints/proposals";
+import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 const ACTION_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -179,9 +180,11 @@ function ProposalLineItem({
       <span className="flex-1 truncate" title={p.rationale ?? undefined}>
         {summaryFor(p)}
       </span>
-      <span className="shrink-0 text-[10px] uppercase tracking-wide text-zinc-400">
-        {p.confidence}%
-      </span>
+      <Tooltip content={`Confidence in this proposal: ${p.confidence}/100. 100 means a direct user assertion; lower scores reflect inferences the agent made.`}>
+        <span className="shrink-0 cursor-help text-[10px] uppercase tracking-wide text-zinc-400">
+          {p.confidence}%
+        </span>
+      </Tooltip>
       {isPending ? (
         <div className="flex shrink-0 items-center gap-1">
           <button
