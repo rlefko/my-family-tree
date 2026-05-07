@@ -280,32 +280,56 @@ async def _apply_create_relationship(
     object_id = await _resolve_person_ref(session, proposal.tree_id, payload["object_id"])
     rel_type = RelType(payload["type"])
 
-    rel = Relationship(
+    # Idempotent: if a non-deleted relationship of the same type already
+    # exists between these two persons (in either direction for symmetric
+    # types), reuse it instead of inserting a duplicate. Same goes for the
+    # symmetric mirror — we only add the second row if it isn't already
+    # present.
+    existing = await _find_existing_relationship(
+        session,
         tree_id=proposal.tree_id,
         subject_id=subject_id,
         object_id=object_id,
-        type=rel_type,
-        start_text=payload.get("start_text"),
-        end_text=payload.get("end_text"),
-        notes_md=payload.get("notes_md"),
-        confidence=proposal.confidence,
+        rel_type=rel_type,
     )
-    session.add(rel)
-    await session.flush()
-
-    if rel_type in SYMMETRIC_RELS:
-        mirror = Relationship(
+    if existing is not None:
+        rel = existing
+    else:
+        rel = Relationship(
             tree_id=proposal.tree_id,
-            subject_id=object_id,
-            object_id=subject_id,
+            subject_id=subject_id,
+            object_id=object_id,
             type=rel_type,
             start_text=payload.get("start_text"),
             end_text=payload.get("end_text"),
             notes_md=payload.get("notes_md"),
             confidence=proposal.confidence,
         )
-        session.add(mirror)
+        session.add(rel)
         await session.flush()
+
+    if rel_type in SYMMETRIC_RELS:
+        mirror_existing = await _find_existing_relationship(
+            session,
+            tree_id=proposal.tree_id,
+            subject_id=object_id,
+            object_id=subject_id,
+            rel_type=rel_type,
+            symmetric=False,  # we want the exact reverse row, not the same one
+        )
+        if mirror_existing is None:
+            mirror = Relationship(
+                tree_id=proposal.tree_id,
+                subject_id=object_id,
+                object_id=subject_id,
+                type=rel_type,
+                start_text=payload.get("start_text"),
+                end_text=payload.get("end_text"),
+                notes_md=payload.get("notes_md"),
+                confidence=proposal.confidence,
+            )
+            session.add(mirror)
+            await session.flush()
 
     source = await get_or_create_chat_source(
         session,
@@ -327,6 +351,37 @@ async def _apply_create_relationship(
         actor=actor,
     )
     return rel.id
+
+
+async def _find_existing_relationship(
+    session: AsyncSession,
+    *,
+    tree_id: UUID,
+    subject_id: UUID,
+    object_id: UUID,
+    rel_type: RelType,
+    symmetric: bool = True,
+) -> Relationship | None:
+    """Return an active relationship of `rel_type` between the two persons,
+    or None. When `symmetric` is True (the default), matches the pair in
+    either direction so we treat (A->B spouse_of) and (B->A spouse_of) as
+    duplicates."""
+    stmt = select(Relationship).where(
+        Relationship.tree_id == tree_id,
+        Relationship.type == rel_type,
+        Relationship.deleted_at.is_(None),
+    )
+    if symmetric and rel_type in SYMMETRIC_RELS:
+        stmt = stmt.where(
+            ((Relationship.subject_id == subject_id) & (Relationship.object_id == object_id))
+            | ((Relationship.subject_id == object_id) & (Relationship.object_id == subject_id))
+        )
+    else:
+        stmt = stmt.where(
+            Relationship.subject_id == subject_id,
+            Relationship.object_id == object_id,
+        )
+    return (await session.execute(stmt.limit(1))).scalar_one_or_none()
 
 
 async def _apply_delete_relationship(session: AsyncSession, proposal: Any) -> UUID:
