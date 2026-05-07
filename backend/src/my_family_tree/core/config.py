@@ -249,9 +249,7 @@ class Settings(BaseSettings):
     familysearch_client_secret: SecretStr | None = None
     familysearch_environment: Literal["integration", "beta", "production"] = "production"
     wikitree_enabled: bool = True
-    genealogy_user_agent: str = (
-        "my-family-tree/0.1 (+https://github.com/rlefkowitz/my-family-tree)"
-    )
+    genealogy_user_agent: str = "my-family-tree/0.1 (+https://github.com/rlefkowitz/my-family-tree)"
     wikidata_enabled: bool = True
     genealogy_max_results: int = 10
     genealogy_request_timeout_s: float = 30.0
