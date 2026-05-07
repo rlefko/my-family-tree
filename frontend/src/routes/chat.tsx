@@ -4,20 +4,26 @@ import {
   ChevronDown,
   Loader2,
   MessageSquarePlus,
+  Paperclip,
   Send,
   Sparkles,
   Square,
 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { useConversations } from "@/api/endpoints/conversations";
+import { uploadDocumentRequest } from "@/api/endpoints/documents";
 import { Tooltip } from "@/components/ui/tooltip";
+import { ChatAttachments, type ChatAttachment } from "@/features/chat/ChatAttachments";
 import { InlineProposals } from "@/features/chat/InlineProposals";
 import { ToolCallCard } from "@/features/chat/ToolCallCard";
 import { useChatStream, type ChatTurn } from "@/features/chat/ChatStreamProvider";
+import { MAX_UPLOAD_BYTES, formatBytes } from "@/features/documents/constants";
 import { cn } from "@/lib/utils";
+
+const TREE_ID = "00000000-0000-0000-0000-000000000000";
 
 export const Route = createFileRoute("/chat")({
   component: ChatPage,
@@ -29,7 +35,10 @@ function ChatPage() {
   const conversations = useConversations();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const draftRef = useRef("");
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
+  const uploading = attachments.some((a) => a.status === "uploading");
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -40,6 +49,64 @@ function ChatPage() {
     markSeen();
   }, [markSeen, turns]);
 
+  const enqueueFiles = useCallback((files: File[]) => {
+    for (const file of files) {
+      const tempId = crypto.randomUUID();
+      if (file.size > MAX_UPLOAD_BYTES) {
+        setAttachments((prev) => [
+          ...prev,
+          {
+            tempId,
+            filename: file.name,
+            status: "failed",
+            progress: 0,
+            error: `File too large (max ${formatBytes(MAX_UPLOAD_BYTES)})`,
+          },
+        ]);
+        continue;
+      }
+      setAttachments((prev) => [
+        ...prev,
+        { tempId, filename: file.name, status: "uploading", progress: 0 },
+      ]);
+      uploadDocumentRequest({
+        file,
+        treeId: TREE_ID,
+        onProgress: (loaded, total) => {
+          setAttachments((prev) =>
+            prev.map((a) =>
+              a.tempId === tempId
+                ? { ...a, progress: total > 0 ? loaded / total : 0 }
+                : a,
+            ),
+          );
+        },
+      })
+        .then((doc) => {
+          setAttachments((prev) =>
+            prev.map((a) =>
+              a.tempId === tempId
+                ? { ...a, status: "ready", progress: 1, documentId: doc.id }
+                : a,
+            ),
+          );
+        })
+        .catch((err: { message?: string }) => {
+          setAttachments((prev) =>
+            prev.map((a) =>
+              a.tempId === tempId
+                ? { ...a, status: "failed", error: err.message ?? "upload failed" }
+                : a,
+            ),
+          );
+        });
+    }
+  }, []);
+
+  function removeAttachment(tempId: string) {
+    setAttachments((prev) => prev.filter((a) => a.tempId !== tempId));
+  }
+
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -49,9 +116,15 @@ function ChatPage() {
 
   function submit() {
     const text = draftRef.current;
-    if (!text.trim() || busy) return;
-    void send(text);
+    if (!text.trim() || busy || uploading) return;
+    const ready = attachments.flatMap((a) =>
+      a.status === "ready" && a.documentId
+        ? [{ documentId: a.documentId, filename: a.filename }]
+        : [],
+    );
+    void send(text, ready);
     draftRef.current = "";
+    setAttachments([]);
     if (inputRef.current) {
       inputRef.current.value = "";
       inputRef.current.style.height = "auto";
@@ -106,7 +179,27 @@ function ChatPage() {
             submit();
           }}
         >
+          <ChatAttachments items={attachments} onRemove={removeAttachment} />
           <div className="mx-auto flex max-w-3xl items-end gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                const files = Array.from(e.target.files ?? []);
+                if (files.length > 0) enqueueFiles(files);
+                e.currentTarget.value = "";
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="Attach files"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-zinc-300 bg-white text-zinc-600 hover:bg-zinc-50"
+            >
+              <Paperclip className="h-3.5 w-3.5" />
+            </button>
             <textarea
               ref={inputRef}
               className="flex-1 resize-none rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
@@ -132,6 +225,7 @@ function ChatPage() {
             ) : (
               <button
                 type="submit"
+                disabled={uploading}
                 className="inline-flex items-center justify-center gap-1.5 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Send className="h-3.5 w-3.5" />

@@ -116,12 +116,17 @@ function turnsFromMessages(messages: MessageRow[]): ChatTurn[] {
   return turns;
 }
 
+export type ChatAttachmentRef = {
+  documentId: string;
+  filename: string;
+};
+
 type ChatStreamValue = {
   turns: ChatTurn[];
   busy: boolean;
   conversationId: string | null;
   unseenCount: number;
-  send: (text: string) => Promise<void>;
+  send: (text: string, attachments?: ChatAttachmentRef[]) => Promise<void>;
   stop: () => void;
   newChat: () => void;
   switchConversation: (id: string) => Promise<void>;
@@ -217,10 +222,18 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
   );
 
   const send = useCallback(
-    async (text: string) => {
+    async (text: string, attachments?: ChatAttachmentRef[]) => {
       const trimmed = text.trim();
       if (!trimmed || busy) return;
       userInteractedRef.current = true;
+
+      const ready = (attachments ?? []).filter((a) => a.documentId);
+      const wireMessage =
+        ready.length > 0
+          ? `[Attached documents: ${ready.map((a) => a.filename).join(", ")} | ids: ${ready
+              .map((a) => a.documentId)
+              .join(", ")}]\n\n${trimmed}`
+          : trimmed;
 
       const userTurn: ChatTurn = {
         id: crypto.randomUUID(),
@@ -256,7 +269,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
           "/api/v1/chat/stream",
           {
             tree_id: TREE_ID,
-            message: trimmed,
+            message: wireMessage,
             history: historySnapshot,
             conversation_id: conversationIdRef.current,
           },
