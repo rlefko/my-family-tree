@@ -18,6 +18,12 @@ export type PersonRow = {
 
 export type PeopleList = { items: PersonRow[] };
 
+export type PlaceRef = {
+  id: string;
+  name: string;
+  country_code: string | null;
+};
+
 export type PersonDetail = {
   id: string;
   display_name: string;
@@ -30,11 +36,26 @@ export type PersonDetail = {
   death_text: string | null;
   birth_place_id: string | null;
   death_place_id: string | null;
+  birth_place: PlaceRef | null;
+  death_place: PlaceRef | null;
   is_living: boolean;
   notes_md: string | null;
   status: string;
   aliases: string[];
 };
+
+export type EventRow = {
+  id: string;
+  type: string;
+  role: string;
+  date_text: string | null;
+  place: PlaceRef | null;
+  description: string | null;
+  confidence: number;
+  participants: { person_id: string; role: string; display_name: string | null }[];
+};
+
+export type EventsList = { items: EventRow[] };
 
 export type RelationshipEdge = {
   id: string;
@@ -86,6 +107,58 @@ export function usePersonDocuments(personId: string | null | undefined) {
     queryKey: ["people", personId, "documents"],
     enabled: Boolean(personId),
     queryFn: () => apiFetch<DocumentsList>(`/api/v1/people/${personId}/documents`),
+  });
+}
+
+export function usePersonEvents(personId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["people", personId, "events"],
+    enabled: Boolean(personId),
+    queryFn: () => apiFetch<EventsList>(`/api/v1/people/${personId}/events`),
+  });
+}
+
+export function useAddEvent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      personId,
+      type,
+      dateText,
+      placeText,
+      role,
+      description,
+      otherParticipants,
+    }: {
+      personId: string;
+      type: string;
+      dateText?: string;
+      placeText?: string;
+      role: string;
+      description?: string;
+      otherParticipants?: { person_id: string; role: string }[];
+    }) =>
+      apiFetch<{ proposal_id: string; event_id: string }>(
+        `/api/v1/people/${personId}/events`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            type,
+            date_text: dateText,
+            place_text: placeText,
+            role,
+            description,
+            other_participants: otherParticipants ?? [],
+          }),
+        },
+      ),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["people", vars.personId, "events"] });
+      for (const p of vars.otherParticipants ?? []) {
+        qc.invalidateQueries({ queryKey: ["people", p.person_id, "events"] });
+      }
+      qc.invalidateQueries({ queryKey: ["tree-graph"] });
+    },
   });
 }
 

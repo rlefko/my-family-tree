@@ -9,20 +9,23 @@
  * just confirmed it.
  */
 
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { Calendar, Loader2, MapPin, Plus, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import {
+  useAddEvent,
   useAddRelationship,
   useAppendNote,
   useDeletePerson,
   usePeople,
   usePerson,
   usePersonDocuments,
+  usePersonEvents,
   usePersonRelationships,
   useUpdatePerson,
+  type EventRow,
   type PersonDetail,
   type RelationshipEdge,
   type UpdatePersonInput,
@@ -51,7 +54,27 @@ const REL_TYPES: { value: string; label: string; symmetric?: boolean }[] = [
   { value: "guardian_of", label: "Guardian of" },
 ];
 
-type Tab = "details" | "relationships" | "documents";
+const EVENT_TYPES = [
+  { value: "marriage", label: "Marriage" },
+  { value: "divorce", label: "Divorce" },
+  { value: "birth", label: "Birth" },
+  { value: "death", label: "Death" },
+  { value: "baptism", label: "Baptism" },
+  { value: "burial", label: "Burial" },
+  { value: "immigration", label: "Immigration" },
+  { value: "emigration", label: "Emigration" },
+  { value: "residence", label: "Residence" },
+  { value: "census", label: "Census" },
+  { value: "military", label: "Military" },
+  { value: "occupation", label: "Occupation" },
+  { value: "education", label: "Education" },
+  { value: "religion", label: "Religion" },
+  { value: "will", label: "Will" },
+  { value: "probate", label: "Probate" },
+  { value: "other", label: "Other" },
+];
+
+type Tab = "details" | "relationships" | "events" | "documents";
 
 export function PersonDrawer({
   personId,
@@ -89,14 +112,17 @@ function DrawerBody({
   const detail = usePerson(personId);
   const rels = usePersonRelationships(personId);
   const docs = usePersonDocuments(personId);
+  const events = usePersonEvents(personId);
   const deleteMutation = useDeletePerson();
   const noteMutation = useAppendNote();
   const addRelMutation = useAddRelationship();
+  const addEventMutation = useAddEvent();
   const updateMutation = useUpdatePerson();
   const allPeople = usePeople();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [noteDraft, setNoteDraft] = useState("");
   const [adding, setAdding] = useState(false);
+  const [addingEvent, setAddingEvent] = useState(false);
 
   if (detail.isLoading || !detail.data) {
     return (
@@ -136,6 +162,7 @@ function DrawerBody({
           [
             ["details", "Details"],
             ["relationships", `Relationships${rels.data ? ` · ${rels.data.items.length}` : ""}`],
+            ["events", `Events${events.data ? ` · ${events.data.items.length}` : ""}`],
             ["documents", `Documents${docs.data ? ` · ${docs.data.items.length}` : ""}`],
           ] as const
         ).map(([key, label]) => (
@@ -171,6 +198,22 @@ function DrawerBody({
               addRelMutation.mutate(args, { onSuccess: () => setAdding(false) });
             }}
             submitting={addRelMutation.isPending}
+          />
+        ) : tab === "events" ? (
+          <EventsPanel
+            events={events.data?.items ?? []}
+            loading={events.isLoading}
+            adding={addingEvent}
+            onAdd={() => setAddingEvent(true)}
+            onCancel={() => setAddingEvent(false)}
+            people={(allPeople.data?.items ?? []).filter((x) => x.id !== personId)}
+            submitting={addEventMutation.isPending}
+            onSubmit={(input) =>
+              addEventMutation.mutate(
+                { personId, ...input },
+                { onSuccess: () => setAddingEvent(false) },
+              )
+            }
           />
         ) : (
           <DocumentsPanel docs={docs.data?.items ?? []} loading={docs.isLoading} />
@@ -311,17 +354,27 @@ function DetailsPanel({
         onSave={(v) => patch({ sex: (v as "male" | "female" | "unknown") || "unknown" })}
       />
       <EditableField
-        label="Birth"
+        label="Birth date"
         value={person.birth_text}
         saving={saving}
         onSave={(v) => patch({ birth_text: v })}
         tooltip="Free-form date: '1990-04-12', 'April 12 1990', 'circa 1942', '1942-1944' all parse."
       />
+      <Field
+        label="Birth place"
+        value={person.birth_place?.name ?? null}
+        tooltip="Add a Birth event from the Events tab to set or change this."
+      />
       <EditableField
-        label="Death"
+        label="Death date"
         value={person.death_text}
         saving={saving}
         onSave={(v) => patch({ death_text: v })}
+      />
+      <Field
+        label="Death place"
+        value={person.death_place?.name ?? null}
+        tooltip="Add a Death event from the Events tab to set or change this."
       />
       <EditableField
         label="Living"
@@ -571,6 +624,237 @@ function AddRelationshipForm({
           className="rounded bg-indigo-600 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
         >
           {submitting ? "Adding..." : "Add"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function EventsPanel({
+  events,
+  loading,
+  adding,
+  onAdd,
+  onCancel,
+  people,
+  submitting,
+  onSubmit,
+}: {
+  events: EventRow[];
+  loading: boolean;
+  adding: boolean;
+  onAdd: () => void;
+  onCancel: () => void;
+  people: { id: string; display_name: string }[];
+  submitting: boolean;
+  onSubmit: (input: {
+    type: string;
+    dateText?: string;
+    placeText?: string;
+    role: string;
+    description?: string;
+    otherParticipants?: { person_id: string; role: string }[];
+  }) => void;
+}) {
+  return (
+    <div className="space-y-3">
+      {loading ? (
+        <div className="text-xs text-zinc-500">Loading...</div>
+      ) : events.length === 0 ? (
+        <div className="rounded-md border border-dashed border-zinc-300 bg-white p-4 text-center text-xs text-zinc-500">
+          No events yet. Add a marriage, birth, death, divorce, or other event.
+        </div>
+      ) : (
+        <ul className="space-y-2">
+          {events.map((ev) => (
+            <EventCard key={ev.id} ev={ev} />
+          ))}
+        </ul>
+      )}
+
+      {adding ? (
+        <AddEventForm
+          people={people}
+          onCancel={onCancel}
+          submitting={submitting}
+          onSubmit={onSubmit}
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={onAdd}
+          className="inline-flex items-center gap-1.5 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm hover:bg-zinc-50"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Add event
+        </button>
+      )}
+    </div>
+  );
+}
+
+function EventCard({ ev }: { ev: EventRow }) {
+  const typeLabel = ev.type.replaceAll("_", " ");
+  const co = ev.participants
+    .map((p) => `${p.display_name ?? p.person_id} (${p.role})`)
+    .join(", ");
+  return (
+    <li className="rounded-md border border-zinc-200 bg-white px-3 py-2 text-xs">
+      <div className="flex items-start justify-between gap-2">
+        <span className="font-medium capitalize text-zinc-900">{typeLabel}</span>
+        <Tooltip content={`Confidence in this event: ${ev.confidence}/100.`}>
+          <span className="cursor-help text-[10px] uppercase tracking-wide text-zinc-400">
+            {ev.confidence}%
+          </span>
+        </Tooltip>
+      </div>
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-zinc-600">
+        {ev.date_text ? (
+          <span className="inline-flex items-center gap-1">
+            <Calendar className="h-3 w-3 text-zinc-400" />
+            {ev.date_text}
+          </span>
+        ) : null}
+        {ev.place ? (
+          <span className="inline-flex items-center gap-1">
+            <MapPin className="h-3 w-3 text-zinc-400" />
+            {ev.place.name}
+          </span>
+        ) : null}
+        {ev.role ? (
+          <span className="rounded-full bg-zinc-100 px-1.5 py-0.5 text-[10px] text-zinc-600">
+            this person: {ev.role}
+          </span>
+        ) : null}
+      </div>
+      {co ? <div className="mt-1 text-[11px] text-zinc-500">with {co}</div> : null}
+      {ev.description ? (
+        <div className="mt-1 text-[11px] italic text-zinc-500">{ev.description}</div>
+      ) : null}
+    </li>
+  );
+}
+
+function AddEventForm({
+  people,
+  onCancel,
+  submitting,
+  onSubmit,
+}: {
+  people: { id: string; display_name: string }[];
+  onCancel: () => void;
+  submitting: boolean;
+  onSubmit: (input: {
+    type: string;
+    dateText?: string;
+    placeText?: string;
+    role: string;
+    description?: string;
+    otherParticipants?: { person_id: string; role: string }[];
+  }) => void;
+}) {
+  const [type, setType] = useState("marriage");
+  const [dateText, setDateText] = useState("");
+  const [placeText, setPlaceText] = useState("");
+  const [otherId, setOtherId] = useState("");
+  const [description, setDescription] = useState("");
+
+  const isPaired = type === "marriage" || type === "divorce";
+  const role = isPaired ? "spouse" : "principal";
+  const otherRole = isPaired ? "spouse" : "principal";
+
+  return (
+    <div className="rounded-md border border-zinc-200 bg-white p-3">
+      <div className="space-y-2 text-xs">
+        <label className="block">
+          <span className="text-zinc-600">Type</span>
+          <select
+            value={type}
+            onChange={(e) => setType(e.target.value)}
+            className="mt-1 w-full rounded border border-zinc-300 bg-white px-2 py-1 text-xs"
+          >
+            {EVENT_TYPES.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block">
+          <span className="text-zinc-600">Date</span>
+          <input
+            type="text"
+            value={dateText}
+            onChange={(e) => setDateText(e.target.value)}
+            placeholder="e.g. June 14 1972, circa 1900, 1942-1944"
+            className="mt-1 w-full rounded border border-zinc-300 bg-white px-2 py-1 text-xs"
+          />
+        </label>
+        <label className="block">
+          <span className="text-zinc-600">Place</span>
+          <input
+            type="text"
+            value={placeText}
+            onChange={(e) => setPlaceText(e.target.value)}
+            placeholder="e.g. Brooklyn, NY"
+            className="mt-1 w-full rounded border border-zinc-300 bg-white px-2 py-1 text-xs"
+          />
+        </label>
+        {isPaired ? (
+          <label className="block">
+            <span className="text-zinc-600">Other party</span>
+            <select
+              value={otherId}
+              onChange={(e) => setOtherId(e.target.value)}
+              className="mt-1 w-full rounded border border-zinc-300 bg-white px-2 py-1 text-xs"
+            >
+              <option value="">Select...</option>
+              {people.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.display_name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        <label className="block">
+          <span className="text-zinc-600">Description (optional)</span>
+          <input
+            type="text"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="mt-1 w-full rounded border border-zinc-300 bg-white px-2 py-1 text-xs"
+          />
+        </label>
+      </div>
+      <div className="mt-3 flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={submitting}
+          className="rounded border border-zinc-300 bg-white px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            onSubmit({
+              type,
+              dateText: dateText.trim() || undefined,
+              placeText: placeText.trim() || undefined,
+              role,
+              description: description.trim() || undefined,
+              otherParticipants:
+                isPaired && otherId
+                  ? [{ person_id: otherId, role: otherRole }]
+                  : undefined,
+            })
+          }
+          disabled={submitting || (isPaired && !otherId)}
+          className="rounded bg-indigo-600 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
+        >
+          {submitting ? "Adding..." : "Add event"}
         </button>
       </div>
     </div>

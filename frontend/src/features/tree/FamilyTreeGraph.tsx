@@ -112,18 +112,51 @@ function PersonCard({ data, selected, id }: PersonCardProps) {
   );
 }
 
-function UnionNode() {
+type UnionNodeData = {
+  marriageDate?: string | null;
+  marriagePlace?: string | null;
+  divorceDate?: string | null;
+};
+
+function UnionNode({ data }: NodeProps<UnionNodeData>) {
+  const tip =
+    [
+      data.marriageDate ? `Married: ${data.marriageDate}` : null,
+      data.marriagePlace ? `Place: ${data.marriagePlace}` : null,
+      data.divorceDate ? `Divorced: ${data.divorceDate}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n") || "Marriage / partnership";
   return (
-    <div
-      className="relative flex items-center justify-center rounded-full border-2 border-pink-300 bg-white shadow-sm"
-      style={{ width: UNION_WIDTH, height: UNION_HEIGHT }}
-      aria-label="union"
-      title="marriage / partnership"
-    >
-      <Heart className="h-3.5 w-3.5 text-pink-500" />
-      <Handle id="left" type="target" position={Position.Left} className="!h-2 !w-2 !bg-pink-400" />
-      <Handle id="right" type="target" position={Position.Right} className="!h-2 !w-2 !bg-pink-400" />
-      <Handle type="source" position={Position.Bottom} className="!h-2 !w-2 !bg-pink-400" />
+    <div className="relative">
+      <div
+        className="relative flex items-center justify-center rounded-full border-2 border-pink-300 bg-white shadow-sm"
+        style={{ width: UNION_WIDTH, height: UNION_HEIGHT }}
+        aria-label="union"
+        title={tip}
+      >
+        <Heart className="h-3.5 w-3.5 text-pink-500" />
+        <Handle
+          id="left"
+          type="target"
+          position={Position.Left}
+          className="!h-2 !w-2 !bg-pink-400"
+        />
+        <Handle
+          id="right"
+          type="target"
+          position={Position.Right}
+          className="!h-2 !w-2 !bg-pink-400"
+        />
+        <Handle type="source" position={Position.Bottom} className="!h-2 !w-2 !bg-pink-400" />
+      </div>
+      {data.marriageDate || data.marriagePlace ? (
+        <div className="pointer-events-none absolute left-1/2 top-full mt-1 -translate-x-1/2 whitespace-nowrap rounded bg-white/95 px-1.5 py-0.5 text-[9px] font-medium text-pink-700 shadow-sm ring-1 ring-pink-200">
+          {data.marriageDate ?? ""}
+          {data.marriageDate && data.marriagePlace ? " · " : ""}
+          {data.marriagePlace ?? ""}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -226,6 +259,17 @@ export function buildLayout(graph: TreeGraph, opts: LayoutOpts = {}): { nodes: N
   const directParents = collectParentsByChild(graph.relationships);
   const parents = inferSiblingParents(directParents, graph.relationships);
 
+  // Index couple events by sorted (a,b) pair so the union node can show date/place.
+  const coupleEventByPair = new Map<string, { date?: string | null; place?: string | null; type: string }>();
+  for (const ev of graph.couple_events ?? []) {
+    const key = couplesKey(ev.person_a_id, ev.person_b_id);
+    coupleEventByPair.set(`${key}:${ev.type}`, {
+      date: ev.date_text,
+      place: ev.place_name,
+      type: ev.type,
+    });
+  }
+
   // Build child -> [source-id]: either union-id (when both parents share one)
   // or individual parent ids.
   const childSources = new Map<string, string[]>();
@@ -299,11 +343,18 @@ export function buildLayout(graph: TreeGraph, opts: LayoutOpts = {}): { nodes: N
     if (!a || !b) continue;
     const x = (a.x + b.x) / 2;
     const y = (a.y + b.y) / 2;
+    const pairKey = couplesKey(u.a, u.b);
+    const marriage = coupleEventByPair.get(`${pairKey}:marriage`);
+    const divorce = coupleEventByPair.get(`${pairKey}:divorce`);
     nodes.push({
       id: u.id,
       type: "union",
       position: { x: x - UNION_WIDTH / 2, y: y - UNION_HEIGHT / 2 },
-      data: {},
+      data: {
+        marriageDate: marriage?.date ?? null,
+        marriagePlace: marriage?.place ?? null,
+        divorceDate: divorce?.date ?? null,
+      },
       draggable: false,
       selectable: false,
     });
@@ -366,12 +417,21 @@ export function FamilyTreeGraph({
     () => ({
       persons: graph.persons,
       relationships: graph.relationships.filter((r) => r.type !== SIBLING_TYPE),
+      couple_events: graph.couple_events ?? [],
     }),
     [graph],
   );
   const { nodes, edges } = useMemo(
-    () => buildLayout({ persons: filteredGraph.persons, relationships: graph.relationships }, { onSelect, selectedId }),
-    [graph.relationships, filteredGraph.persons, onSelect, selectedId],
+    () =>
+      buildLayout(
+        {
+          persons: filteredGraph.persons,
+          relationships: graph.relationships,
+          couple_events: graph.couple_events ?? [],
+        },
+        { onSelect, selectedId },
+      ),
+    [graph.relationships, graph.couple_events, filteredGraph.persons, onSelect, selectedId],
   );
 
   if (graph.persons.length === 0) {

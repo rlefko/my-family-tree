@@ -27,9 +27,18 @@ export type RelationshipRow = {
   confidence: number;
 };
 
+export type CoupleEvent = {
+  person_a_id: string;
+  person_b_id: string;
+  type: "marriage" | "divorce";
+  date_text: string | null;
+  place_name: string | null;
+};
+
 export type TreeGraph = {
   persons: PersonNode[];
   relationships: RelationshipRow[];
+  couple_events: CoupleEvent[];
 };
 
 export function useTreeGraph() {
