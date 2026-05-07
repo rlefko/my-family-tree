@@ -13,11 +13,8 @@ import httpx
 from pydantic import SecretStr
 
 from my_family_tree.core.errors import ExternalProviderError
-from my_family_tree.core.logging import get_logger
-from my_family_tree.external.http import build_http_client
+from my_family_tree.external.http import build_http_client, request_json
 from my_family_tree.external.web_search.base import WebSearchProvider, WebSearchResult
-
-log = get_logger(__name__)
 
 BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search"
 
@@ -34,15 +31,14 @@ class BraveProvider(WebSearchProvider):
             "X-Subscription-Token": self.api_key.get_secret_value(),
             "Accept": "application/json",
         }
-        try:
-            response = await self.client.get(BRAVE_SEARCH_URL, params=params, headers=headers)
-            response.raise_for_status()
-        except httpx.HTTPError as e:
-            raise ExternalProviderError(f"brave search failed: {e}") from e
-        try:
-            payload = response.json()
-        except ValueError as e:
-            raise ExternalProviderError(f"brave returned non-json body: {e}") from e
+        payload = await request_json(
+            self.client,
+            "GET",
+            BRAVE_SEARCH_URL,
+            label="brave",
+            params=params,
+            headers=headers,
+        )
         web = payload.get("web") if isinstance(payload, dict) else None
         results = web.get("results") if isinstance(web, dict) else None
         if not isinstance(results, list):

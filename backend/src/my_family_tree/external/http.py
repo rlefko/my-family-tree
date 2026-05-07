@@ -26,6 +26,7 @@ import ipaddress
 import socket
 from collections.abc import AsyncIterator, Iterable
 from contextlib import asynccontextmanager
+from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
@@ -241,6 +242,36 @@ class FetchResult:
         self.byte_size = byte_size
 
 
+async def request_json(
+    client: httpx.AsyncClient,
+    method: str,
+    url: str,
+    *,
+    label: str,
+    allow_status: tuple[int, ...] = (),
+    **kwargs: Any,
+) -> Any:
+    """Issue a request and decode the response body as JSON.
+
+    Wraps `httpx.HTTPError` and JSON decode failures into `ExternalProviderError`
+    with a `{label} request failed` / `{label} returned non-json body` message
+    so every provider raises the same error class on the same failure shapes.
+    Status codes listed in `allow_status` short-circuit to `None` before
+    `raise_for_status()` (used for FamilySearch endpoints that 404 when an
+    optional resource is absent)."""
+    try:
+        response = await client.request(method, url, **kwargs)
+        if response.status_code in allow_status:
+            return None
+        response.raise_for_status()
+    except httpx.HTTPError as e:
+        raise ExternalProviderError(f"{label} request failed: {e}") from e
+    try:
+        return response.json()
+    except ValueError as e:
+        raise ExternalProviderError(f"{label} returned non-json body: {e}") from e
+
+
 __all__ = [
     "DEFAULT_MAX_BYTES",
     "DEFAULT_MAX_REDIRECTS",
@@ -251,5 +282,6 @@ __all__ = [
     "build_http_client",
     "fetch_text",
     "open_http_client",
+    "request_json",
     "validate_url",
 ]
