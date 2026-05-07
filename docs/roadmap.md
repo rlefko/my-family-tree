@@ -22,9 +22,27 @@
 - [x] GitHub Actions CI + soft no-direct-push guardrail
 - [x] Terraform: bootstrap + modules (network, alb, ecs, rds, s3, secrets, iam) + dev/prod envs
 
+## v1.5 (Persist Chat Records PR)
+
+- [x] Wire `ChatAgent` + `ToolHost` into the chat endpoint so the LLM has the
+      full MCP tool surface
+- [x] SSE streaming chat (`POST /api/v1/chat/stream`) with live deltas + tool
+      cards
+- [x] Full propose-write tool surface: person update/merge, relationship
+      create/delete, event create/update, place create, source create,
+      claim accept/reject, request_user_input
+- [x] Proposal applier with per-(action, target_type) dispatch
+- [x] User-assertion `Source` + per-fact `Claim` + `FactProvenance` written
+      automatically on approve
+- [x] `POST /proposals/approve_batch` with dependency-ordered savepoints
+- [x] Frontend `/proposals` page with diff view, individual + bulk approve,
+      `/proposals?ids=...` deep-link from chat bubbles
+- [x] One-shot `migrate` compose service so `make up` always lands on a
+      migrated schema
+- [x] Updated system prompt teaching the agent the propose-first pattern
+
 ## v2 (deferred to follow-ups)
 
-- Streaming chat UI with tool-call timeline rendering
 - Conflict-resolution side-by-side UI with "ask agent" button
 - Interactive tree visualization (react-flow + dagre, confidence-coded edges)
 - Bulk-resolve wizard for first GEDCOM import (currently floods conflicts)
@@ -33,6 +51,8 @@
 - GEDCOM 7 export
 - Authentication (single-user with shared password, then multi-user)
 - Deep research subagent with full plan/search/extract/propose loop
-- Bulk auto-approve UI gesture for trusted batches
+- Async resume for `request_user_input` (queue + paired reply)
+- Argument-token streaming on tool calls (currently we stream final input)
+- Synchronous post-apply conflict-rule sweep (currently nightly only)
 - ECS task autoscaling (currently fixed desired_count)
 - CloudFront in front of the frontend bucket
