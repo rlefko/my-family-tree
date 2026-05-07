@@ -167,6 +167,8 @@ export type UpdatePersonInput = Partial<{
   sex: "male" | "female" | "unknown";
   birth_text: string | null;
   death_text: string | null;
+  birth_place_text: string | null;
+  death_place_text: string | null;
   is_living: boolean;
   notes_md: string | null;
 }>;

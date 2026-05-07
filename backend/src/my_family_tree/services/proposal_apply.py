@@ -177,7 +177,7 @@ async def _apply_create_person(
     return person.id
 
 
-async def _apply_update_person(
+async def _apply_update_person(  # noqa: PLR0912  one branch per editable field is the design
     session: AsyncSession,
     proposal: Any,
     payload: dict[str, Any],
@@ -222,12 +222,20 @@ async def _apply_update_person(
         person.death_precision = int(death.precision)
         person.death_circa = death.circa
         diff["death_text"] = death.text
-    if payload.get("birth_place_text"):
+    # Direct id (set by the People-drawer PATCH after it ensured the Place row
+    # exists) takes precedence; *_text falls back to a read-only lookup.
+    if payload.get("birth_place_id"):
+        person.birth_place_id = UUID(str(payload["birth_place_id"]))
+        diff["birth_place_id"] = str(person.birth_place_id)
+    elif payload.get("birth_place_text"):
         place_id = await _resolve_place(session, proposal.tree_id, payload["birth_place_text"])
         if place_id is not None:
             person.birth_place_id = place_id
             diff["birth_place_id"] = str(place_id)
-    if payload.get("death_place_text"):
+    if payload.get("death_place_id"):
+        person.death_place_id = UUID(str(payload["death_place_id"]))
+        diff["death_place_id"] = str(person.death_place_id)
+    elif payload.get("death_place_text"):
         place_id = await _resolve_place(session, proposal.tree_id, payload["death_place_text"])
         if place_id is not None:
             person.death_place_id = place_id

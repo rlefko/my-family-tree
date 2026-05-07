@@ -567,6 +567,8 @@ class UpdatePersonBody(BaseModel):
     sex: str | None = None
     birth_text: str | None = None
     death_text: str | None = None
+    birth_place_text: str | None = None  # human-readable place name; created if new
+    death_place_text: str | None = None
     is_living: bool | None = None
     notes_md: str | None = None
 
@@ -588,6 +590,21 @@ async def update_person(
     }
     if not payload:
         raise ValidationError("update body must include at least one field")
+
+    # Resolve / create place rows for any place edits BEFORE handing the
+    # payload to the applier, since the applier's _resolve_place is read-only
+    # (won't conjure a new Place from a typed name).
+    if payload.get("birth_place_text") is not None:
+        place_id = await _ensure_place(session, person.tree_id, payload["birth_place_text"])
+        if place_id is not None:
+            payload["birth_place_id"] = str(place_id)
+        # Always strip the *_text key so the applier doesn't double-resolve.
+        payload.pop("birth_place_text", None)
+    if payload.get("death_place_text") is not None:
+        place_id = await _ensure_place(session, person.tree_id, payload["death_place_text"])
+        if place_id is not None:
+            payload["death_place_id"] = str(place_id)
+        payload.pop("death_place_text", None)
 
     proposal = Proposal(
         tree_id=person.tree_id,
