@@ -1,174 +1,222 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import {
+  Brain,
+  ChevronDown,
+  Loader2,
+  MessageSquarePlus,
+  Send,
+  Sparkles,
+  Square,
+} from "lucide-react";
+import { useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import { apiFetch } from "@/api/client";
+import { useConversations } from "@/api/endpoints/conversations";
+import { Tooltip } from "@/components/ui/tooltip";
+import { InlineProposals } from "@/features/chat/InlineProposals";
+import { ToolCallCard } from "@/features/chat/ToolCallCard";
+import { useChatStream, type ChatTurn } from "@/features/chat/ChatStreamProvider";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/chat")({
   component: ChatPage,
 });
 
-type ChatTurn = {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  pending?: boolean;
-  error?: boolean;
-};
-
-type ChatResponse = {
-  text: string;
-  model: string;
-  provider: string;
-};
-
-const TREE_ID = "00000000-0000-0000-0000-000000000000";
-
 function ChatPage() {
-  const [prompt, setPrompt] = useState("");
-  const [turns, setTurns] = useState<ChatTurn[]>([]);
-  const [busy, setBusy] = useState(false);
+  const { turns, busy, send, stop, newChat, switchConversation, conversationId, markSeen } =
+    useChatStream();
+  const conversations = useConversations();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const draftRef = useRef("");
 
-  // Auto-scroll to the latest message whenever turns change.
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [turns]);
 
-  // Auto-grow the composer up to a max height.
+  // Clear the "new chat result" badge as soon as the user lands here.
   useEffect(() => {
-    const el = inputRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
-  }, [prompt]);
+    markSeen();
+  }, [markSeen, turns]);
 
-  async function send() {
-    const trimmed = prompt.trim();
-    if (!trimmed || busy) return;
-
-    const userTurn: ChatTurn = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content: trimmed,
-    };
-    const pendingId = crypto.randomUUID();
-    const pending: ChatTurn = {
-      id: pendingId,
-      role: "assistant",
-      content: "",
-      pending: true,
-    };
-
-    // Snapshot the history we'll send (everything before this user turn).
-    const history = turns
-      .filter((t) => !t.pending && !t.error)
-      .map((t) => ({ role: t.role, content: t.content }));
-
-    setTurns((prev) => [...prev, userTurn, pending]);
-    setPrompt("");
-    setBusy(true);
-
-    try {
-      const res = await apiFetch<ChatResponse>("/api/v1/chat", {
-        method: "POST",
-        body: JSON.stringify({
-          tree_id: TREE_ID,
-          message: trimmed,
-          history,
-        }),
-      });
-      setTurns((prev) =>
-        prev.map((t) => (t.id === pendingId ? { ...t, pending: false, content: res.text } : t)),
-      );
-    } catch (e) {
-      const message = (e as { message?: string }).message ?? String(e);
-      setTurns((prev) =>
-        prev.map((t) =>
-          t.id === pendingId
-            ? { ...t, pending: false, error: true, content: `Error: ${message}` }
-            : t,
-        ),
-      );
-    } finally {
-      setBusy(false);
-      inputRef.current?.focus();
+  function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      submit();
     }
   }
 
-  function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    // Enter to send, Shift+Enter for newline. Standard chat UX.
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      send();
+  function submit() {
+    const text = draftRef.current;
+    if (!text.trim() || busy) return;
+    void send(text);
+    draftRef.current = "";
+    if (inputRef.current) {
+      inputRef.current.value = "";
+      inputRef.current.style.height = "auto";
     }
   }
 
   return (
-    <section className="flex h-full flex-col">
-      <header className="border-b border-zinc-200 bg-white px-6 py-4">
-        <h1 className="text-xl font-semibold">Chat</h1>
-        <p className="text-xs text-zinc-500">
-          Ask about your tree. Multi-turn context is sent on each request.
-        </p>
-      </header>
+    <section className="flex h-full">
+      <ConversationSidebar
+        conversations={conversations.data?.items ?? []}
+        loading={conversations.isLoading}
+        activeId={conversationId}
+        onSelect={(id) => void switchConversation(id)}
+        onNewChat={newChat}
+      />
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
-        {turns.length === 0 ? (
-          <EmptyState />
-        ) : (
-          <ul className="mx-auto flex max-w-3xl flex-col gap-4">
-            {turns.map((turn) => (
-              <li
-                key={turn.id}
-                className={cn(
-                  "flex w-full",
-                  turn.role === "user" ? "justify-end" : "justify-start",
-                )}
+      <div className="relative flex flex-1 flex-col">
+        <header className="flex items-center justify-between border-b border-zinc-200 bg-white px-6 py-4">
+          <div>
+            <h1 className="text-xl font-semibold">Chat</h1>
+            <p className="text-xs text-zinc-500">
+              Ask about your tree. The assistant queues changes as proposals you can approve right
+              here in chat.
+            </p>
+          </div>
+        </header>
+
+        <div ref={scrollRef} className="flex-1 overflow-y-auto bg-zinc-50/50 px-4 py-6 sm:px-6">
+          {turns.length === 0 ? (
+            <EmptyState />
+          ) : (
+            <ul className="mx-auto flex max-w-3xl flex-col gap-4">
+              {turns.map((turn) => (
+                <li
+                  key={turn.id}
+                  className={cn(
+                    "flex w-full",
+                    turn.role === "user" ? "justify-end" : "justify-start",
+                  )}
+                >
+                  <Bubble turn={turn} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <form
+          className="border-t border-zinc-200 bg-white px-4 py-3 sm:px-6"
+          onSubmit={(e) => {
+            e.preventDefault();
+            submit();
+          }}
+        >
+          <div className="mx-auto flex max-w-3xl items-end gap-2">
+            <textarea
+              ref={inputRef}
+              className="flex-1 resize-none rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              placeholder="Ask a question. Shift+Enter for a new line."
+              rows={1}
+              onChange={(e) => {
+                draftRef.current = e.target.value;
+                const el = e.currentTarget;
+                el.style.height = "auto";
+                el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+              }}
+              onKeyDown={onKeyDown}
+            />
+            {busy ? (
+              <button
+                type="button"
+                onClick={stop}
+                className="inline-flex items-center justify-center gap-1.5 rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm hover:bg-zinc-50"
               >
-                <Bubble turn={turn} />
+                <Square className="h-3.5 w-3.5" />
+                Stop
+              </button>
+            ) : (
+              <button
+                type="submit"
+                className="inline-flex items-center justify-center gap-1.5 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Send className="h-3.5 w-3.5" />
+                Send
+              </button>
+            )}
+          </div>
+        </form>
+      </div>
+    </section>
+  );
+}
+
+function ConversationSidebar({
+  conversations,
+  loading,
+  activeId,
+  onSelect,
+  onNewChat,
+}: {
+  conversations: { id: string; title: string | null; last_message_at: string | null }[];
+  loading: boolean;
+  activeId: string | null;
+  onSelect: (id: string) => void;
+  onNewChat: () => void;
+}) {
+  return (
+    <aside className="flex w-60 shrink-0 flex-col border-r border-zinc-200 bg-white">
+      <div className="border-b border-zinc-200 px-3 py-3">
+        <button
+          type="button"
+          onClick={onNewChat}
+          className="flex w-full items-center justify-center gap-1.5 rounded-md border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-medium text-indigo-700 hover:bg-indigo-100"
+        >
+          <MessageSquarePlus className="h-3.5 w-3.5" />
+          New chat
+        </button>
+      </div>
+      <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+        Recent
+      </div>
+      <div className="flex-1 overflow-y-auto px-1 pb-3">
+        {loading ? (
+          <div className="px-3 py-2 text-xs text-zinc-400">Loading...</div>
+        ) : conversations.length === 0 ? (
+          <div className="px-3 py-2 text-xs text-zinc-400">No conversations yet.</div>
+        ) : (
+          <ul className="space-y-0.5">
+            {conversations.map((c) => (
+              <li key={c.id}>
+                <button
+                  type="button"
+                  onClick={() => onSelect(c.id)}
+                  className={cn(
+                    "block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-zinc-100",
+                    c.id === activeId ? "bg-indigo-50 text-indigo-900" : "text-zinc-700",
+                  )}
+                  title={c.title ?? "(untitled)"}
+                >
+                  <div className="truncate font-medium">{c.title ?? "(untitled)"}</div>
+                  {c.last_message_at ? (
+                    <div className="truncate text-[10px] text-zinc-400">
+                      {new Date(c.last_message_at).toLocaleString()}
+                    </div>
+                  ) : null}
+                </button>
               </li>
             ))}
           </ul>
         )}
       </div>
-
-      <form
-        className="border-t border-zinc-200 bg-white px-4 py-3 sm:px-6"
-        onSubmit={(e) => {
-          e.preventDefault();
-          send();
-        }}
-      >
-        <div className="mx-auto flex max-w-3xl items-end gap-2">
-          <textarea
-            ref={inputRef}
-            className="flex-1 resize-none rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
-            placeholder="Ask a question. Shift+Enter for a new line."
-            rows={1}
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            onKeyDown={onKeyDown}
-            disabled={busy}
-          />
-          <button
-            type="submit"
-            className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={busy || !prompt.trim()}
-          >
-            {busy ? "Sending..." : "Send"}
-          </button>
-        </div>
-      </form>
-    </section>
+    </aside>
   );
 }
 
 function Bubble({ turn }: { turn: ChatTurn }) {
   const isUser = turn.role === "user";
+  const toolCalls = turn.toolCalls ?? [];
+  const proposalIds = turn.proposalIds ?? [];
+  const hasContent = !!turn.content;
+  const hasThinking = !!turn.thinking;
+  const hasTrace = hasThinking || toolCalls.length > 0;
+  const isQuiet = !hasContent && toolCalls.length === 0;
+  const runningTool = toolCalls.find((c) => c.status === "running");
+  const turnDone = !turn.pending;
   return (
     <div
       className={cn(
@@ -180,33 +228,118 @@ function Bubble({ turn }: { turn: ChatTurn }) {
             : "rounded-bl-sm border border-zinc-200 bg-white text-zinc-900",
       )}
     >
-      {turn.pending ? (
-        <Pending />
-      ) : isUser ? (
-        <p className="whitespace-pre-wrap break-words">{turn.content}</p>
-      ) : (
-        <Markdown content={turn.content} />
-      )}
+      {!isUser && hasTrace && turnDone ? (
+        <CollapsedTrace thinking={turn.thinking ?? ""} toolCalls={toolCalls} />
+      ) : !isUser && hasTrace ? (
+        <>
+          {hasThinking ? (
+            <ThinkingPill text={turn.thinking ?? ""} live={Boolean(turn.pending)} />
+          ) : null}
+          {toolCalls.length > 0 ? (
+            <div className="mb-2 flex flex-col gap-1">
+              {toolCalls.map((call) => (
+                <ToolCallCard key={call.id} call={call} />
+              ))}
+            </div>
+          ) : null}
+        </>
+      ) : null}
+      {hasContent ? (
+        isUser ? (
+          <p className="whitespace-pre-wrap break-words">{turn.content}</p>
+        ) : (
+          <Markdown content={turn.content} />
+        )
+      ) : turn.pending && isQuiet ? (
+        <PendingHero hasThinking={hasThinking} />
+      ) : !isUser && isQuiet && !turn.pending ? (
+        <span className="text-xs italic text-zinc-400">(no response, try rephrasing)</span>
+      ) : null}
+      {!isUser && turn.pending && !isQuiet ? (
+        <BusyFooter runningToolName={runningTool?.name ?? null} isStreamingText={hasContent} />
+      ) : null}
+      {!isUser && proposalIds.length > 0 ? <InlineProposals ids={proposalIds} /> : null}
     </div>
   );
 }
 
-function Pending() {
+function CollapsedTrace({
+  thinking,
+  toolCalls,
+}: {
+  thinking: string;
+  toolCalls: ChatTurn["toolCalls"];
+}) {
+  const calls = toolCalls ?? [];
+  const summary =
+    calls.length > 0
+      ? `Reasoned and used ${calls.length} tool${calls.length === 1 ? "" : "s"}`
+      : "Reasoning summary";
   return (
-    <span className="inline-flex items-center gap-1 text-zinc-400">
-      <Dot delay="0ms" />
-      <Dot delay="120ms" />
-      <Dot delay="240ms" />
-    </span>
+    <details className="group mb-2 rounded-md border border-zinc-200 bg-zinc-50 text-xs">
+      <summary className="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-zinc-700 marker:hidden">
+        <Brain className="h-3 w-3 text-amber-500" />
+        <span className="font-medium">{summary}</span>
+        <ChevronDown className="ml-auto h-3.5 w-3.5 text-zinc-400 transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="space-y-1 border-t border-zinc-200 p-2">
+        {thinking ? <ThinkingPill text={thinking} live={false} /> : null}
+        {calls.map((call) => (
+          <ToolCallCard key={call.id} call={call} />
+        ))}
+      </div>
+    </details>
   );
 }
 
-function Dot({ delay }: { delay: string }) {
+function BusyFooter({
+  runningToolName,
+  isStreamingText,
+}: {
+  runningToolName: string | null;
+  isStreamingText: boolean;
+}) {
+  const label = runningToolName
+    ? `Calling ${runningToolName}...`
+    : isStreamingText
+      ? "Writing reply..."
+      : "Working...";
   return (
-    <span
-      className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-400"
-      style={{ animationDelay: delay }}
-    />
+    <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700">
+      <Loader2 className="h-3 w-3 animate-spin" />
+      <span>{label}</span>
+    </div>
+  );
+}
+
+function ThinkingPill({ text, live }: { text: string; live: boolean }) {
+  // Show only the last few lines of the reasoning summary so the bubble
+  // doesn't grow unbounded while the model deliberates.
+  const tail = text.split(/\n+/).filter(Boolean).slice(-3).join(" · ");
+  return (
+    <Tooltip
+      content="OpenAI's reasoning summary while it deliberates. Raw thinking is never persisted; only the summary is shown."
+      side="bottom"
+    >
+      <div
+        className={cn(
+          "mb-2 inline-flex max-w-full items-start gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-900 cursor-help",
+          live ? "animate-pulse" : "",
+        )}
+      >
+        <Brain className="mt-[1px] h-3 w-3 shrink-0 text-amber-600" />
+        <span className="line-clamp-3 break-words">{tail || "Thinking..."}</span>
+      </div>
+    </Tooltip>
+  );
+}
+
+function PendingHero({ hasThinking }: { hasThinking: boolean }) {
+  return (
+    <span className="inline-flex items-center gap-2 text-zinc-500">
+      <Loader2 className="h-3 w-3 animate-spin text-indigo-500" />
+      <span className="text-xs">{hasThinking ? "Working on it..." : "Thinking..."}</span>
+    </span>
   );
 }
 
@@ -235,11 +368,13 @@ function Markdown({ content }: { content: string }) {
 function EmptyState() {
   return (
     <div className="mx-auto flex max-w-md flex-col items-center justify-center py-20 text-center">
-      <div className="mb-2 text-4xl">💬</div>
+      <div className="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
+        <Sparkles className="h-6 w-6" />
+      </div>
       <h2 className="text-lg font-semibold text-zinc-900">Start a conversation</h2>
       <p className="mt-1 text-sm text-zinc-500">
-        Ask the assistant about your tree, a person, a date, or a document. Each turn carries the
-        previous context, so you can ask follow-ups.
+        Ask the assistant about your tree, give it new records to file, or have it search for what's
+        already there. New records get queued as proposals you can approve right in this chat.
       </p>
     </div>
   );

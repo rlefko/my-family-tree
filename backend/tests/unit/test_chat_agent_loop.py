@@ -1,0 +1,209 @@
+"""ChatAgent loop tests with a fake provider and a fake ToolHost.
+
+The fake provider emits a scripted sequence of `StreamEvent`s. The fake host
+records every `call(name, payload)` and returns a configurable result. We
+assert ChatAgent surfaces the right `ChatTurnEvent`s and threads tool
+results back through the next provider invocation."""
+
+from __future__ import annotations
+
+import json
+from collections.abc import AsyncIterator, Iterable
+from dataclasses import dataclass, field
+from typing import Any
+
+import pytest
+
+from my_family_tree.agent.budgets import Budgets
+from my_family_tree.agent.loop import ChatAgent
+from my_family_tree.llm.base import (
+    Message,
+    StreamEvent,
+    TextBlock,
+    UsageDelta,
+)
+
+
+@dataclass
+class FakeHost:
+    specs_list: list[dict[str, Any]] = field(default_factory=list)
+    calls: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
+    next_outputs: list[Any] = field(default_factory=list)
+
+    def specs(self) -> list[dict[str, Any]]:
+        return list(self.specs_list)
+
+    async def call(self, name: str, payload: dict[str, Any]) -> Any:
+        self.calls.append((name, payload))
+        return self.next_outputs.pop(0) if self.next_outputs else _ProposalRefLike()
+
+
+@dataclass
+class _ProposalRefLike:
+    proposal_id: str = "00000000-0000-0000-0000-0000000abc01"
+    rationale: str = "test rationale"
+    confidence: int = 70
+
+    def model_dump(self, mode: str = "python") -> dict[str, Any]:
+        return {
+            "proposal_id": self.proposal_id,
+            "rationale": self.rationale,
+            "confidence": self.confidence,
+        }
+
+
+@dataclass
+class FakeProvider:
+    name: str = "fake"
+    default_model: str = "fake-model"
+    scripts: list[list[StreamEvent]] = field(default_factory=list)
+    seen_messages: list[list[Message]] = field(default_factory=list)
+
+    def stream(
+        self,
+        *,
+        model: str,
+        system: str | None,
+        messages: list[Message],
+        tools: list[Any] | None = None,
+        max_tokens: int = 4096,
+        temperature: float | None = None,
+        reasoning: Any = None,
+        cache: Any = None,
+    ) -> AsyncIterator[StreamEvent]:
+        del model, system, tools, max_tokens, temperature, reasoning, cache
+        self.seen_messages.append(messages)
+        events = self.scripts.pop(0) if self.scripts else []
+        return _aiter(events)
+
+    async def complete(self, **_: Any) -> Any:  # pragma: no cover  unused in tests
+        raise NotImplementedError
+
+
+async def _aiter(events: Iterable[StreamEvent]) -> AsyncIterator[StreamEvent]:
+    for e in events:
+        yield e
+
+
+def _text(t: str) -> StreamEvent:
+    return StreamEvent(type="text_delta", text=t)
+
+
+def _tool_started(call_id: str, name: str) -> StreamEvent:
+    return StreamEvent(type="tool_use_started", tool_use_id=call_id, tool_name=name)
+
+
+def _tool_input(call_id: str, delta: str) -> StreamEvent:
+    return StreamEvent(type="tool_use_input_delta", tool_use_id=call_id, tool_input_delta=delta)
+
+
+def _tool_finished(call_id: str) -> StreamEvent:
+    return StreamEvent(type="tool_use_finished", tool_use_id=call_id)
+
+
+def _usage(in_tokens: int = 50, out_tokens: int = 25) -> StreamEvent:
+    return StreamEvent(
+        type="usage",
+        usage=UsageDelta(input_tokens=in_tokens, output_tokens=out_tokens),
+    )
+
+
+def _done() -> StreamEvent:
+    return StreamEvent(type="done", stop_reason="end_turn")
+
+
+def _initial_messages() -> list[Message]:
+    return [Message(role="user", content=[TextBlock(type="text", text="hi")])]
+
+
+@pytest.mark.unit
+async def test_text_only_turn_emits_deltas_and_done() -> None:
+    provider = FakeProvider(scripts=[[_text("Hello"), _text(" world"), _usage(), _done()]])
+    host = FakeHost()
+    agent = ChatAgent(provider=provider, model="m", host=host, budgets=Budgets())
+    events = []
+    async for evt in agent.run_turn(_initial_messages()):
+        events.append((evt.type, evt.payload))
+    types = [e[0] for e in events]
+    assert types == ["text_delta", "text_delta", "usage", "done"]
+    text = "".join(e[1].get("text", "") for e in events if e[0] == "text_delta")
+    assert text == "Hello world"
+    done = next(e[1] for e in events if e[0] == "done")
+    assert done["proposal_ids"] == []
+
+
+@pytest.mark.unit
+async def test_tool_call_dispatches_into_host_and_threads_result_back() -> None:
+    """The provider terminates every successful stream with `done`. The agent
+    must still re-enter the provider on the next turn to give the model a
+    chance to respond to tool results, instead of bailing out on the first
+    `done`."""
+    args = {"display_name": "Test Person"}
+    args_json = json.dumps(args)
+    first_turn = [
+        _tool_started("call_1", "person_propose_create"),
+        _tool_input("call_1", args_json),
+        _tool_finished("call_1"),
+        _usage(),
+        _done(),
+    ]
+    second_turn = [_text("Queued 1 proposal"), _usage(), _done()]
+    provider = FakeProvider(scripts=[first_turn, second_turn])
+    host = FakeHost(next_outputs=[_ProposalRefLike(proposal_id="aaa")])
+    agent = ChatAgent(provider=provider, model="m", host=host, budgets=Budgets())
+
+    events = []
+    async for evt in agent.run_turn(_initial_messages()):
+        events.append((evt.type, evt.payload))
+
+    # Host received the call with parsed args.
+    assert host.calls == [("person_propose_create", args)]
+
+    # The agent emitted tool_use_started, tool_use_finished, tool_result, then
+    # text_delta and done on the second pass.
+    types = [e[0] for e in events]
+    assert "tool_use_started" in types
+    assert "tool_use_finished" in types
+    assert "tool_result" in types
+    assert "done" in types
+
+    # Done event surfaces the proposal_id from the tool result.
+    done = next(e[1] for e in events if e[0] == "done")
+    assert done["proposal_ids"] == ["aaa"]
+
+    # The second provider invocation saw the assistant turn + tool result in history.
+    assert len(provider.seen_messages) == 2
+    second_history = provider.seen_messages[1]
+    assert any(m.role == "assistant" for m in second_history)
+    assert any(m.role == "tool" for m in second_history)
+
+
+@pytest.mark.unit
+async def test_tool_error_marks_result_as_error_and_continues() -> None:
+    first_turn = [
+        _tool_started("call_1", "person_propose_create"),
+        _tool_input("call_1", "{}"),
+        _tool_finished("call_1"),
+        _usage(),
+        _done(),
+    ]
+    second_turn = [_text("oops"), _done()]
+
+    class _ExplodingHost(FakeHost):
+        async def call(self, name: str, payload: dict[str, Any]) -> Any:
+            self.calls.append((name, payload))
+            raise RuntimeError("kaboom")
+
+    provider = FakeProvider(scripts=[first_turn, second_turn])
+    host = _ExplodingHost()
+    agent = ChatAgent(provider=provider, model="m", host=host, budgets=Budgets())
+
+    events = []
+    async for evt in agent.run_turn(_initial_messages()):
+        events.append((evt.type, evt.payload))
+
+    tool_result = next(e[1] for e in events if e[0] == "tool_result")
+    assert tool_result["is_error"] is True
+    assert "kaboom" in str(tool_result["output"])
+    done = next(e[1] for e in events if e[0] == "done")
+    assert done["proposal_ids"] == []  # error tool never contributes a proposal id
