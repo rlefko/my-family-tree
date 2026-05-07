@@ -110,9 +110,14 @@ def _row(p: Proposal) -> ProposalRow:
 @router.get("/proposals", response_model=ProposalList)
 async def list_proposals(
     session: SessionDep,
-    status: ProposalStatus | None = ProposalStatus.pending,
+    status: ProposalStatus | None = None,
     limit: int = 100,
 ) -> ProposalList:
+    """When `status` is omitted, returns proposals across every status so the
+    chat's inline-proposals surface can keep displaying a row that's been
+    approved or rejected (showing the resolved badge instead of vanishing).
+    The /proposals page passes `?status=pending` explicitly when it wants
+    only the queue."""
     stmt = select(Proposal)
     if status is not None:
         stmt = stmt.where(Proposal.status == status)
