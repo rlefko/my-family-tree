@@ -22,24 +22,9 @@ from my_family_tree.core.logging import get_logger
 from my_family_tree.core.time import utcnow
 from my_family_tree.db.session import session_scope
 from my_family_tree.llm.base import Message as LLMMessage, TextBlock
+from my_family_tree.mcp import tools  # noqa: F401  importing the package registers every tool
 from my_family_tree.mcp.host import ToolContext, ToolHost
 from my_family_tree.mcp.registry import Capability, get_registry
-from my_family_tree.mcp.tools import (  # noqa: F401  ensure side-effect imports happen
-    chunks,
-    claims,
-    conflicts,
-    documents,
-    events,
-    external_ingest,
-    genealogy,
-    input,
-    persons,
-    places,
-    relationships,
-    sources,
-    stats,
-    web_search,
-)
 from my_family_tree.models.agent_run import AgentRun
 from my_family_tree.models.conversation import Conversation
 from my_family_tree.models.enums import AgentRole, MessageRole, RunStatus

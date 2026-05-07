@@ -17,24 +17,9 @@ import pytest
 from pydantic import SecretStr
 
 from my_family_tree.core.config import Settings, reset_settings_cache
+from my_family_tree.mcp import tools  # noqa: F401  importing the package registers every tool
 from my_family_tree.mcp.host import ToolContext, ToolHost
 from my_family_tree.mcp.registry import Capability, get_registry
-from my_family_tree.mcp.tools import (  # noqa: F401  side-effect imports
-    chunks,
-    claims,
-    conflicts,
-    documents,
-    events,
-    external_ingest,
-    genealogy,
-    input,
-    persons,
-    places,
-    relationships,
-    sources,
-    stats,
-    web_search,
-)
 
 EXTERNAL_TOOL_NAMES = {
     "web_search",

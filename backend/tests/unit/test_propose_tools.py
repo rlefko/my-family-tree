@@ -4,20 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+from my_family_tree.mcp import tools  # noqa: F401  importing the package registers every tool
 from my_family_tree.mcp.registry import Capability, get_registry
-from my_family_tree.mcp.tools import (  # noqa: F401  side-effect imports
-    chunks,
-    claims,
-    conflicts,
-    documents,
-    events,
-    input,
-    persons,
-    places,
-    relationships,
-    sources,
-    stats,
-)
 
 PROPOSE_TOOLS = {
     "person_propose_create",
