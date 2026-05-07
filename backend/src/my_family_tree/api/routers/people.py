@@ -21,7 +21,6 @@ from my_family_tree.models.enums import (
     PersonStatus,
     ProposalAction,
     ProposalStatus,
-    RelType,
     SubjectType,
 )
 from my_family_tree.models.event import Event, EventParticipant
@@ -30,7 +29,11 @@ from my_family_tree.models.place import Place
 from my_family_tree.models.proposal import Proposal
 from my_family_tree.models.relationship import Relationship
 from my_family_tree.models.source import Source
-from my_family_tree.services.proposal_apply import apply_proposal
+from my_family_tree.services.proposal_apply import (
+    SYMMETRIC_RELS,
+    apply_proposal,
+    normalize_place_name,
+)
 
 router = APIRouter()
 
@@ -225,7 +228,7 @@ async def _ensure_place(session: SessionDep, tree_id: UUID, place_text: str | No
     name = place_text.strip()
     if not name:
         return None
-    normalized = name.lower()
+    normalized = normalize_place_name(name)
     existing = await session.execute(
         select(Place).where(Place.tree_id == tree_id, Place.normalized == normalized)
     )
@@ -653,8 +656,7 @@ async def delete_relationship(relationship_id: UUID, session: SessionDep) -> dic
 
     # For symmetric types, soft-delete the mirror row too so the edge is
     # gone from both directions in the relationships listing.
-    symmetric = {RelType.spouse_of, RelType.sibling_of, RelType.partner_of}
-    if rel.type in symmetric:
+    if rel.type in SYMMETRIC_RELS:
         mirror_stmt = select(Relationship).where(
             Relationship.tree_id == rel.tree_id,
             Relationship.type == rel.type,
