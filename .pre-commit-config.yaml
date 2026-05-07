@@ -1,0 +1,91 @@
+# Pre-commit hooks. Linting + formatting + typecheck + secret scan + commit-msg.
+# Run on commit:  pre-commit install
+# Run on push:    pre-commit install --hook-type pre-push
+# Run manually:   pre-commit run --all-files
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-added-large-files
+        args: ["--maxkb=2048"]
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+
+  # Backend: ruff = lint (auto-fix) + format. Pinned aggressively.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.7.4
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+        files: ^backend/.*\.py$
+      - id: ruff-format
+        files: ^backend/.*\.py$
+
+  # Secret scan across the whole repo.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+
+  - repo: local
+    hooks:
+      # --- backend typecheck -------------------------------------------------
+      - id: ty
+        name: ty (typecheck backend)
+        entry: bash -c 'cd backend && uv run ty check src tests'
+        language: system
+        pass_filenames: false
+        files: ^backend/.*\.py$
+
+      # --- frontend lint -----------------------------------------------------
+      - id: oxlint
+        name: oxlint (frontend lint)
+        entry: bash -c 'cd frontend && yarn -s oxlint --fix'
+        language: system
+        files: ^frontend/.*\.(ts|tsx|js|jsx)$
+        pass_filenames: false
+
+      # --- frontend typecheck ------------------------------------------------
+      - id: tsgo
+        name: tsgo (frontend typecheck)
+        entry: bash -c 'cd frontend && yarn -s typecheck'
+        language: system
+        files: ^frontend/.*\.(ts|tsx)$
+        pass_filenames: false
+
+      # --- formatting (prettier covers everything; the frontend hook only
+      #     fires when frontend files change so it stays fast) ---------------
+      - id: prettier-frontend
+        name: prettier (frontend)
+        entry: bash -c 'cd frontend && yarn -s prettier --write "$@"' --
+        language: system
+        files: ^frontend/.*\.(ts|tsx|js|jsx|json|md|css|html|yml|yaml)$
+
+      - id: prettier-repo
+        name: prettier (repo: docs, .github, root yaml/json/md)
+        entry: bash -c 'cd frontend && yarn -s prettier --write "$@"' --
+        language: system
+        files: ^(?!frontend/|backend/src/my_family_tree/db/migrations/versions/|infra/terraform/).*\.(json|md|yml|yaml|css|html)$
+
+      # --- terraform ---------------------------------------------------------
+      - id: terraform-fmt
+        name: terraform fmt
+        entry: bash -c 'terraform fmt -recursive infra/terraform'
+        language: system
+        files: ^infra/terraform/.*\.tf$
+        pass_filenames: false
+
+      # --- commit message ----------------------------------------------------
+      - id: emoji-commit
+        name: emoji-prefixed commit message
+        entry: bash scripts/check-commit-msg.sh
+        language: system
+        stages: [commit-msg]

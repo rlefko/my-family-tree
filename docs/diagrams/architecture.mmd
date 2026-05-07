@@ -1,0 +1,14 @@
+flowchart LR
+  user["User browser"] -->|HTTP / SSE| api["FastAPI (api)"]
+  user -->|HTTP| frontend["Vite + React (frontend)"]
+  cd["Claude Desktop"] -->|stdio MCP| mcpStdio["mcp (stdio mode)"]
+  external["External MCP clients"] -->|Streamable HTTP| api
+  api -->|in-process ToolHost| tools["MCP tool registry"]
+  api -->|enqueue| redis[("Redis (arq)")]
+  worker["arq worker"] -->|consume| redis
+  worker -->|read/write| db[("Postgres 17 + pgvector")]
+  api -->|read/write| db
+  worker -->|raw + derived| s3[("S3 / MinIO")]
+  api -->|presign| s3
+  api -->|stream| openai["OpenAI Responses API"]
+  api -->|stream| anthropic["Anthropic Messages API"]
