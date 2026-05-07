@@ -27,6 +27,7 @@ class ToolContext:
     tree_id: UUID
     capabilities: Capability
     actor: str = "agent"
+    agent_run_id: UUID | None = None
 
 
 class ToolHost:
