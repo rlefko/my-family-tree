@@ -95,7 +95,9 @@ export function PersonDrawer({
       }}
     >
       <DrawerContent>
-        {personId ? <DrawerBody key={personId} personId={personId} tab={tab} setTab={setTab} /> : null}
+        {personId ? (
+          <DrawerBody key={personId} personId={personId} tab={tab} setTab={setTab} />
+        ) : null}
       </DrawerContent>
     </Drawer>
   );
@@ -201,7 +203,7 @@ function DrawerBody({
             }}
             submitting={addRelMutation.isPending}
             onDelete={(id) => deleteRelMutation.mutate(id)}
-            deletingId={deleteRelMutation.isPending ? deleteRelMutation.variables ?? null : null}
+            deletingId={deleteRelMutation.isPending ? (deleteRelMutation.variables ?? null) : null}
           />
         ) : tab === "events" ? (
           <EventsPanel
@@ -246,10 +248,7 @@ function DrawerBody({
               onClick={() => {
                 const text = noteDraft.trim();
                 if (!text) return;
-                noteMutation.mutate(
-                  { personId, text },
-                  { onSuccess: () => setNoteDraft("") },
-                );
+                noteMutation.mutate({ personId, text }, { onSuccess: () => setNoteDraft("") });
               }}
               disabled={!noteDraft.trim() || noteMutation.isPending}
               className="self-stretch rounded-md bg-indigo-600 px-3 text-xs font-medium text-white shadow-sm hover:bg-indigo-700 disabled:opacity-60"
@@ -433,7 +432,9 @@ function Field({
   );
   return (
     <div>
-      <div className="mb-1">{tooltip ? <Tooltip content={tooltip}>{labelEl}</Tooltip> : labelEl}</div>
+      <div className="mb-1">
+        {tooltip ? <Tooltip content={tooltip}>{labelEl}</Tooltip> : labelEl}
+      </div>
       <div className={cn("text-sm", value ? "text-zinc-900" : "italic text-zinc-400")}>
         {value || "—"}
       </div>
@@ -518,9 +519,7 @@ function RelationshipsPanel({
                   key={e.id}
                   className="flex items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs"
                 >
-                  <span className="flex-1 font-medium text-zinc-900">
-                    {e.other.display_name}
-                  </span>
+                  <span className="flex-1 font-medium text-zinc-900">{e.other.display_name}</span>
                   <Tooltip
                     content={`Confidence in this relationship: ${e.confidence}/100. 100 means asserted directly by the user; lower numbers reflect inferences from documents or chat.`}
                   >
@@ -555,9 +554,7 @@ function RelationshipsPanel({
           people={people}
           onCancel={onCancel}
           submitting={submitting}
-          onSubmit={(otherId, type, direction) =>
-            onSubmit({ personId, otherId, type, direction })
-          }
+          onSubmit={(otherId, type, direction) => onSubmit({ personId, otherId, type, direction })}
         />
       ) : (
         <button
@@ -722,9 +719,7 @@ function EventsPanel({
 
 function EventCard({ ev }: { ev: EventRow }) {
   const typeLabel = ev.type.replaceAll("_", " ");
-  const co = ev.participants
-    .map((p) => `${p.display_name ?? p.person_id} (${p.role})`)
-    .join(", ");
+  const co = ev.participants.map((p) => `${p.display_name ?? p.person_id} (${p.role})`).join(", ");
   return (
     <li className="rounded-md border border-zinc-200 bg-white px-3 py-2 text-xs">
       <div className="flex items-start justify-between gap-2">
@@ -873,9 +868,7 @@ function AddEventForm({
               role,
               description: description.trim() || undefined,
               otherParticipants:
-                isPaired && otherId
-                  ? [{ person_id: otherId, role: otherRole }]
-                  : undefined,
+                isPaired && otherId ? [{ person_id: otherId, role: otherRole }] : undefined,
             })
           }
           disabled={submitting || (isPaired && !otherId)}
@@ -892,7 +885,13 @@ function DocumentsPanel({
   docs,
   loading,
 }: {
-  docs: { id: string; title: string | null; kind: string; citation: string | null; claim_count: number }[];
+  docs: {
+    id: string;
+    title: string | null;
+    kind: string;
+    citation: string | null;
+    claim_count: number;
+  }[];
   loading: boolean;
 }) {
   if (loading) return <div className="text-xs text-zinc-500">Loading...</div>;
@@ -915,7 +914,9 @@ function DocumentsPanel({
             <div className="text-[10px] uppercase tracking-wide text-zinc-400">{d.kind}</div>
             {d.citation ? <div className="mt-0.5 text-zinc-600">{d.citation}</div> : null}
           </div>
-          <Tooltip content={`This document contributed ${d.claim_count} claim${d.claim_count === 1 ? "" : "s"} about this person.`}>
+          <Tooltip
+            content={`This document contributed ${d.claim_count} claim${d.claim_count === 1 ? "" : "s"} about this person.`}
+          >
             <span className="shrink-0 cursor-help rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-700">
               {d.claim_count} claim{d.claim_count === 1 ? "" : "s"}
             </span>

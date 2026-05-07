@@ -24,8 +24,7 @@ export const Route = createFileRoute("/chat")({
 });
 
 function ChatPage() {
-  const { turns, busy, send, stop, newChat, switchConversation, conversationId } =
-    useChatStream();
+  const { turns, busy, send, stop, newChat, switchConversation, conversationId } = useChatStream();
   const conversations = useConversations();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -277,10 +276,7 @@ function Bubble({ turn }: { turn: ChatTurn }) {
         <span className="text-xs italic text-zinc-400">(no response — try rephrasing)</span>
       ) : null}
       {!isUser && turn.pending && !isQuiet ? (
-        <BusyFooter
-          runningToolName={runningTool?.name ?? null}
-          isStreamingText={hasContent}
-        />
+        <BusyFooter runningToolName={runningTool?.name ?? null} isStreamingText={hasContent} />
       ) : null}
       {!isUser && proposalIds.length > 0 ? <InlineProposals ids={proposalIds} /> : null}
     </div>
@@ -393,11 +389,9 @@ function EmptyState() {
       </div>
       <h2 className="text-lg font-semibold text-zinc-900">Start a conversation</h2>
       <p className="mt-1 text-sm text-zinc-500">
-        Ask the assistant about your tree, give it new records to file, or have it search for
-        what's already there. New records get queued as proposals you can approve right in this
-        chat.
+        Ask the assistant about your tree, give it new records to file, or have it search for what's
+        already there. New records get queued as proposals you can approve right in this chat.
       </p>
     </div>
   );
 }
-

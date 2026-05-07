@@ -53,13 +53,7 @@ function ToolIcon({ name }: { name: string }) {
   return <Hammer className={className} />;
 }
 
-export function ToolCallCard({
-  call,
-  turnDone,
-}: {
-  call: ToolCall;
-  turnDone?: boolean;
-}) {
+export function ToolCallCard({ call, turnDone }: { call: ToolCall; turnDone?: boolean }) {
   const hasInput = call.input !== undefined && call.input !== null;
   const hasOutput = call.output !== undefined && call.output !== null;
   // Open while the turn is still streaming or this specific call is running,

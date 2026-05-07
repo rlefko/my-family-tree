@@ -29,7 +29,8 @@ function PeoplePage() {
           </span>
         </div>
         <p className="mt-1 text-xs text-zinc-500">
-          Click a row to open the side drawer with notes, relationships, and the documents that reference them.
+          Click a row to open the side drawer with notes, relationships, and the documents that
+          reference them.
         </p>
         <div className="mt-3 max-w-md">
           <div className="relative">
@@ -47,7 +48,9 @@ function PeoplePage() {
 
       <div className="flex-1 overflow-auto bg-zinc-50">
         {isLoading ? (
-          <div className="flex h-32 items-center justify-center text-sm text-zinc-500">Loading...</div>
+          <div className="flex h-32 items-center justify-center text-sm text-zinc-500">
+            Loading...
+          </div>
         ) : people.length === 0 ? (
           <div className="flex h-32 items-center justify-center text-sm text-zinc-500">
             {q ? "No matches." : "No people yet. Use the Chat to add some."}
@@ -142,7 +145,9 @@ function Row({
           </span>
         </Tooltip>
       </td>
-      <td className="px-4 py-2 text-zinc-700">{person.birth_text || <span className="text-zinc-400">—</span>}</td>
+      <td className="px-4 py-2 text-zinc-700">
+        {person.birth_text || <span className="text-zinc-400">—</span>}
+      </td>
       <td className="px-4 py-2 text-zinc-700">
         {person.death_text || (
           <span className="text-zinc-400">{person.is_living ? "—" : "deceased"}</span>

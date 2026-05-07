@@ -97,8 +97,7 @@ export function usePersonRelationships(personId: string | null | undefined) {
   return useQuery({
     queryKey: ["people", personId, "relationships"],
     enabled: Boolean(personId),
-    queryFn: () =>
-      apiFetch<RelationshipsList>(`/api/v1/people/${personId}/relationships`),
+    queryFn: () => apiFetch<RelationshipsList>(`/api/v1/people/${personId}/relationships`),
   });
 }
 
@@ -138,20 +137,17 @@ export function useAddEvent() {
       description?: string;
       otherParticipants?: { person_id: string; role: string }[];
     }) =>
-      apiFetch<{ proposal_id: string; event_id: string }>(
-        `/api/v1/people/${personId}/events`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            type,
-            date_text: dateText,
-            place_text: placeText,
-            role,
-            description,
-            other_participants: otherParticipants ?? [],
-          }),
-        },
-      ),
+      apiFetch<{ proposal_id: string; event_id: string }>(`/api/v1/people/${personId}/events`, {
+        method: "POST",
+        body: JSON.stringify({
+          type,
+          date_text: dateText,
+          place_text: placeText,
+          role,
+          description,
+          other_participants: otherParticipants ?? [],
+        }),
+      }),
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ["people", vars.personId, "events"] });
       for (const p of vars.otherParticipants ?? []) {
@@ -195,10 +191,9 @@ export function useDeletePerson() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (personId: string) =>
-      apiFetch<{ proposal_id: string; status: string }>(
-        `/api/v1/people/${personId}`,
-        { method: "DELETE" },
-      ),
+      apiFetch<{ proposal_id: string; status: string }>(`/api/v1/people/${personId}`, {
+        method: "DELETE",
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["people"] });
       qc.invalidateQueries({ queryKey: ["tree-graph"] });
@@ -210,10 +205,10 @@ export function useAppendNote() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ personId, text }: { personId: string; text: string }) =>
-      apiFetch<{ proposal_id: string; status: string }>(
-        `/api/v1/people/${personId}/notes`,
-        { method: "POST", body: JSON.stringify({ notes_md: text }) },
-      ),
+      apiFetch<{ proposal_id: string; status: string }>(`/api/v1/people/${personId}/notes`, {
+        method: "POST",
+        body: JSON.stringify({ notes_md: text }),
+      }),
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ["people"] });
       qc.invalidateQueries({ queryKey: ["people", vars.personId] });
@@ -225,10 +220,9 @@ export function useDeleteRelationship() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (relationshipId: string) =>
-      apiFetch<{ proposal_id: string; status: string }>(
-        `/api/v1/relationships/${relationshipId}`,
-        { method: "DELETE" },
-      ),
+      apiFetch<{ proposal_id: string; status: string }>(`/api/v1/relationships/${relationshipId}`, {
+        method: "DELETE",
+      }),
     onSuccess: () => {
       // Invalidate everything that could surface this edge: the people list,
       // every person's relationships subquery, and the tree graph.
