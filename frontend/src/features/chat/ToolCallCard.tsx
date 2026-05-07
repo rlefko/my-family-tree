@@ -24,12 +24,8 @@ export function ToolCallCard({ call }: { call: ToolCall }) {
         </span>
         <span className="ml-auto text-zinc-400 group-open:rotate-180 transition-transform">▾</span>
       </summary>
-      {call.input !== undefined ? (
-        <Section label="Input" value={call.input} />
-      ) : null}
-      {call.output !== undefined ? (
-        <Section label="Output" value={call.output} />
-      ) : null}
+      {call.input !== undefined ? <Section label="Input" value={call.input} /> : null}
+      {call.output !== undefined ? <Section label="Output" value={call.output} /> : null}
     </details>
   );
 }

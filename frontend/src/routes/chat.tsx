@@ -45,8 +45,8 @@ function ChatPage() {
       <header className="border-b border-zinc-200 bg-white px-6 py-4">
         <h1 className="text-xl font-semibold">Chat</h1>
         <p className="text-xs text-zinc-500">
-          Ask about your tree. The assistant can also store records by queueing proposals you
-          review in the Proposals page.
+          Ask about your tree. The assistant can also store records by queueing proposals you review
+          in the Proposals page.
         </p>
       </header>
 
@@ -58,7 +58,10 @@ function ChatPage() {
             {turns.map((turn) => (
               <li
                 key={turn.id}
-                className={cn("flex w-full", turn.role === "user" ? "justify-end" : "justify-start")}
+                className={cn(
+                  "flex w-full",
+                  turn.role === "user" ? "justify-end" : "justify-start",
+                )}
               >
                 <Bubble turn={turn} />
               </li>
@@ -193,8 +196,8 @@ function EmptyState() {
       <div className="mb-2 text-4xl">💬</div>
       <h2 className="text-lg font-semibold text-zinc-900">Start a conversation</h2>
       <p className="mt-1 text-sm text-zinc-500">
-        Ask the assistant about your tree, give it new records to file, or have it search for
-        what's already there. New records get queued as proposals you review.
+        Ask the assistant about your tree, give it new records to file, or have it search for what's
+        already there. New records get queued as proposals you review.
       </p>
     </div>
   );

@@ -6,7 +6,7 @@ import { env } from "@/lib/env";
 import { cn } from "@/lib/utils";
 
 const NAV: {
-  to: "/" | "/people" | "/tree" | "/documents" | "/conflicts" | "/chat";
+  to: "/" | "/people" | "/tree" | "/documents" | "/conflicts" | "/proposals" | "/chat";
   label: string;
 }[] = [
   { to: "/", label: "Dashboard" },
@@ -14,6 +14,7 @@ const NAV: {
   { to: "/people", label: "People" },
   { to: "/documents", label: "Documents" },
   { to: "/conflicts", label: "Conflicts" },
+  { to: "/proposals", label: "Proposals" },
   { to: "/chat", label: "Chat" },
 ];
 
