@@ -28,10 +28,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { DocumentDrawer } from "@/features/documents/DocumentDrawer";
 import { DocumentSearch } from "@/features/documents/DocumentSearch";
-import {
-  UploadDropzone,
-  type UploadDropzoneHandle,
-} from "@/features/documents/UploadDropzone";
+import { UploadDropzone, type UploadDropzoneHandle } from "@/features/documents/UploadDropzone";
 import { StatusBadge } from "@/features/documents/StatusBadge";
 import {
   DOCUMENT_KINDS,
@@ -250,10 +247,12 @@ function DocumentCard({
             </div>
             <div className="mt-2 flex items-center gap-3 text-[11px] text-zinc-500">
               <span>{doc.size_bytes ? formatBytes(doc.size_bytes) : ""}</span>
-              {doc.pages ? <span>{doc.pages} page{doc.pages === 1 ? "" : "s"}</span> : null}
-              {doc.created_at ? (
-                <span>{new Date(doc.created_at).toLocaleDateString()}</span>
+              {doc.pages ? (
+                <span>
+                  {doc.pages} page{doc.pages === 1 ? "" : "s"}
+                </span>
               ) : null}
+              {doc.created_at ? <span>{new Date(doc.created_at).toLocaleDateString()}</span> : null}
             </div>
           </div>
           <DropdownMenu>

@@ -1,9 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import {
-  isActiveStatus,
-  statusLabel,
-  type DocumentStatus,
-} from "@/features/documents/constants";
+import { isActiveStatus, statusLabel, type DocumentStatus } from "@/features/documents/constants";
 import { cn } from "@/lib/utils";
 
 export function StatusBadge({ status }: { status: DocumentStatus }) {

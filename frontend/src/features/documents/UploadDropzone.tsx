@@ -1,19 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, Upload, X } from "lucide-react";
-import {
-  forwardRef,
-  useCallback,
-  useEffect,
-  useImperativeHandle,
-  useRef,
-  useState,
-} from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 
-import {
-  uploadDocumentRequest,
-  useDocument,
-  type DocumentDetail,
-} from "@/api/endpoints/documents";
+import { uploadDocumentRequest, useDocument, type DocumentDetail } from "@/api/endpoints/documents";
 import { Progress } from "@/components/ui/progress";
 import type { ApiError } from "@/api/client";
 import { MAX_UPLOAD_BYTES, formatBytes } from "@/features/documents/constants";
@@ -72,10 +61,7 @@ export const UploadDropzone = forwardRef<UploadDropzoneHandle, Props>(function U
           continue;
         }
         const abort = new AbortController();
-        setItems((prev) => [
-          ...prev,
-          { id, file, status: "uploading", progress: 0, abort },
-        ]);
+        setItems((prev) => [...prev, { id, file, status: "uploading", progress: 0, abort }]);
         uploadDocumentRequest({
           file,
           treeId,

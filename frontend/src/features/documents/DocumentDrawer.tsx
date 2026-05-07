@@ -94,8 +94,7 @@ function DrawerBody({
 }) {
   const showReprocess =
     doc.status === "failed" ||
-    (doc.status === "pending" &&
-      Date.now() - new Date(doc.imported_at).getTime() > 60_000);
+    (doc.status === "pending" && Date.now() - new Date(doc.imported_at).getTime() > 60_000);
 
   return (
     <>

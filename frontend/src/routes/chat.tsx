@@ -74,9 +74,7 @@ function ChatPage() {
         onProgress: (loaded, total) => {
           setAttachments((prev) =>
             prev.map((a) =>
-              a.tempId === tempId
-                ? { ...a, progress: total > 0 ? loaded / total : 0 }
-                : a,
+              a.tempId === tempId ? { ...a, progress: total > 0 ? loaded / total : 0 } : a,
             ),
           );
         },
@@ -84,9 +82,7 @@ function ChatPage() {
         .then((doc) => {
           setAttachments((prev) =>
             prev.map((a) =>
-              a.tempId === tempId
-                ? { ...a, status: "ready", progress: 1, documentId: doc.id }
-                : a,
+              a.tempId === tempId ? { ...a, status: "ready", progress: 1, documentId: doc.id } : a,
             ),
           );
         })
