@@ -333,7 +333,7 @@ function DetailsPanel({
               .filter(Boolean) ?? [];
           await patch({ given_names: rebuildGivenNames(parsed.first, parsed.middle, next) });
         }}
-        tooltip='Comma-separated. Stored as quoted tokens inside given names (e.g., John "Jonny" Smith). The chat agent reads quoted tokens as nicknames automatically.'
+        tooltip={`Comma-separated. Stored as quoted tokens inside given names (e.g., John "Jonny" Smith). The chat agent reads quoted tokens as nicknames automatically.`}
       />
       <EditableField
         label="Surname"
