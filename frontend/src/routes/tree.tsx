@@ -1,7 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Loader2, Network } from "lucide-react";
+import { useState } from "react";
 
 import { useTreeGraph } from "@/api/endpoints/relationships";
+import { PersonDrawer } from "@/features/people/PersonDrawer";
 import { FamilyTreeGraph } from "@/features/tree/FamilyTreeGraph";
 
 export const Route = createFileRoute("/tree")({
@@ -10,6 +12,7 @@ export const Route = createFileRoute("/tree")({
 
 function TreePage() {
   const { data, isLoading, isError, error } = useTreeGraph();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   return (
     <section className="flex h-full flex-col">
@@ -19,8 +22,8 @@ function TreePage() {
           <h1 className="text-xl font-semibold">Family Tree</h1>
         </div>
         <p className="mt-1 text-xs text-zinc-500">
-          Parent edges run vertically; spouse and partner edges connect horizontally. Sibling
-          edges are dashed. Layout updates automatically as you approve proposals.
+          Spouses are joined by a heart; children's lines come down from the joiner. Click any
+          person to open their full record in the side drawer.
         </p>
       </header>
       <div className="flex-1">
@@ -34,9 +37,14 @@ function TreePage() {
             Failed to load tree: {(error as Error)?.message ?? "unknown error"}
           </div>
         ) : data ? (
-          <FamilyTreeGraph graph={data} />
+          <FamilyTreeGraph
+            graph={data}
+            selectedId={selectedId}
+            onSelect={(id) => setSelectedId(id)}
+          />
         ) : null}
       </div>
+      <PersonDrawer personId={selectedId} onClose={() => setSelectedId(null)} />
     </section>
   );
 }

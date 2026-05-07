@@ -52,6 +52,7 @@ describe("buildLayout (family tree)", () => {
   it("inserts a union node for spouses and routes shared children through it", () => {
     const { nodes, edges } = buildLayout({
       persons: [personA, personB, personC],
+      couple_events: [],
       relationships: [
         {
           id: "r-spouse",
@@ -102,6 +103,7 @@ describe("buildLayout (family tree)", () => {
   it("routes a child of a single parent directly when no couple edge exists", () => {
     const { edges } = buildLayout({
       persons: [personA, personC],
+      couple_events: [],
       relationships: [
         {
           id: "r-parent",
@@ -120,6 +122,7 @@ describe("buildLayout (family tree)", () => {
   it("does not render sibling_of edges; siblings are implied by shared parents", () => {
     const { edges } = buildLayout({
       persons: [personA, personC, personD],
+      couple_events: [],
       relationships: [
         {
           id: "r-parent-c",
