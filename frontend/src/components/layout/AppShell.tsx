@@ -1,4 +1,14 @@
 import { Link } from "@tanstack/react-router";
+import {
+  AlertTriangle,
+  FileText,
+  Home,
+  ListChecks,
+  MessageCircle,
+  Network,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 import type { ReactNode } from "react";
 
 import { useHealth } from "@/api/endpoints/health";
@@ -8,14 +18,15 @@ import { cn } from "@/lib/utils";
 const NAV: {
   to: "/" | "/people" | "/tree" | "/documents" | "/conflicts" | "/proposals" | "/chat";
   label: string;
+  icon: LucideIcon;
 }[] = [
-  { to: "/", label: "Dashboard" },
-  { to: "/tree", label: "Tree" },
-  { to: "/people", label: "People" },
-  { to: "/documents", label: "Documents" },
-  { to: "/conflicts", label: "Conflicts" },
-  { to: "/proposals", label: "Proposals" },
-  { to: "/chat", label: "Chat" },
+  { to: "/", label: "Dashboard", icon: Home },
+  { to: "/tree", label: "Tree", icon: Network },
+  { to: "/people", label: "People", icon: Users },
+  { to: "/documents", label: "Documents", icon: FileText },
+  { to: "/conflicts", label: "Conflicts", icon: AlertTriangle },
+  { to: "/proposals", label: "Proposals", icon: ListChecks },
+  { to: "/chat", label: "Chat", icon: MessageCircle },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -24,17 +35,23 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="flex h-full">
       <aside className="flex w-56 flex-col border-r border-zinc-200 bg-white">
         <div className="px-4 py-4 text-lg font-semibold">{env.VITE_APP_NAME}</div>
-        <nav className="flex-1 space-y-1 px-2">
-          {NAV.map((item) => (
-            <Link
-              key={item.to}
-              to={item.to}
-              className={cn("block rounded px-3 py-2 text-sm hover:bg-zinc-100")}
-              activeProps={{ className: "bg-zinc-100 font-medium" }}
-            >
-              {item.label}
-            </Link>
-          ))}
+        <nav className="flex-1 space-y-0.5 px-2">
+          {NAV.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.to}
+                to={item.to}
+                className={cn(
+                  "flex items-center gap-2 rounded px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-100",
+                )}
+                activeProps={{ className: "bg-zinc-100 font-medium text-zinc-900" }}
+              >
+                <Icon className="h-4 w-4" />
+                {item.label}
+              </Link>
+            );
+          })}
         </nav>
         <div className="border-t border-zinc-200 px-4 py-3 text-xs text-zinc-500">
           {health.data ? (

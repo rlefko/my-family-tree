@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { MessageSquarePlus, Send, Square, Sparkles } from "lucide-react";
 import { useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import { ProposalLink } from "@/features/chat/ProposalLink";
+import { InlineProposals } from "@/features/chat/InlineProposals";
 import { ToolCallCard } from "@/features/chat/ToolCallCard";
 import { useChatStream, type ChatTurn } from "@/features/chat/useChatStream";
 import { cn } from "@/lib/utils";
@@ -13,7 +14,7 @@ export const Route = createFileRoute("/chat")({
 });
 
 function ChatPage() {
-  const { turns, busy, send, stop } = useChatStream();
+  const { turns, busy, send, stop, newChat } = useChatStream();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const draftRef = useRef("");
@@ -42,12 +43,22 @@ function ChatPage() {
 
   return (
     <section className="flex h-full flex-col">
-      <header className="border-b border-zinc-200 bg-white px-6 py-4">
-        <h1 className="text-xl font-semibold">Chat</h1>
-        <p className="text-xs text-zinc-500">
-          Ask about your tree. The assistant can also store records by queueing proposals you review
-          in the Proposals page.
-        </p>
+      <header className="flex items-center justify-between border-b border-zinc-200 bg-white px-6 py-4">
+        <div>
+          <h1 className="text-xl font-semibold">Chat</h1>
+          <p className="text-xs text-zinc-500">
+            Ask about your tree. The assistant queues changes as proposals you can approve right
+            here in chat.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={newChat}
+          className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm hover:bg-zinc-50"
+        >
+          <MessageSquarePlus className="h-3.5 w-3.5" />
+          New chat
+        </button>
       </header>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
@@ -95,15 +106,17 @@ function ChatPage() {
             <button
               type="button"
               onClick={stop}
-              className="inline-flex items-center justify-center rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm hover:bg-zinc-50"
+              className="inline-flex items-center justify-center gap-1.5 rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm hover:bg-zinc-50"
             >
+              <Square className="h-3.5 w-3.5" />
               Stop
             </button>
           ) : (
             <button
               type="submit"
-              className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-1.5 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
+              <Send className="h-3.5 w-3.5" />
               Send
             </button>
           )}
@@ -115,6 +128,9 @@ function ChatPage() {
 
 function Bubble({ turn }: { turn: ChatTurn }) {
   const isUser = turn.role === "user";
+  const toolCalls = turn.toolCalls ?? [];
+  const proposalIds = turn.proposalIds ?? [];
+  const hasContent = turn.content && turn.content.length > 0;
   return (
     <div
       className={cn(
@@ -126,25 +142,23 @@ function Bubble({ turn }: { turn: ChatTurn }) {
             : "rounded-bl-sm border border-zinc-200 bg-white text-zinc-900",
       )}
     >
-      {turn.toolCalls && turn.toolCalls.length > 0 ? (
+      {toolCalls.length > 0 ? (
         <div className="mb-2 flex flex-col gap-1">
-          {turn.toolCalls.map((call) => (
+          {toolCalls.map((call) => (
             <ToolCallCard key={call.id} call={call} />
           ))}
         </div>
       ) : null}
-      {turn.content ? (
+      {hasContent ? (
         isUser ? (
           <p className="whitespace-pre-wrap break-words">{turn.content}</p>
         ) : (
           <Markdown content={turn.content} />
         )
-      ) : turn.pending ? (
+      ) : turn.pending && toolCalls.length === 0 ? (
         <Pending />
       ) : null}
-      {!isUser && turn.proposalIds && turn.proposalIds.length > 0 ? (
-        <ProposalLink ids={turn.proposalIds} />
-      ) : null}
+      {!isUser && proposalIds.length > 0 ? <InlineProposals ids={proposalIds} /> : null}
     </div>
   );
 }
@@ -193,11 +207,14 @@ function Markdown({ content }: { content: string }) {
 function EmptyState() {
   return (
     <div className="mx-auto flex max-w-md flex-col items-center justify-center py-20 text-center">
-      <div className="mb-2 text-4xl">💬</div>
+      <div className="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
+        <Sparkles className="h-6 w-6" />
+      </div>
       <h2 className="text-lg font-semibold text-zinc-900">Start a conversation</h2>
       <p className="mt-1 text-sm text-zinc-500">
-        Ask the assistant about your tree, give it new records to file, or have it search for what's
-        already there. New records get queued as proposals you review.
+        Ask the assistant about your tree, give it new records to file, or have it search for
+        what's already there. New records get queued as proposals you can approve right in this
+        chat.
       </p>
     </div>
   );

@@ -1,10 +1,19 @@
 /**
  * Chat streaming hook. POSTs to `/api/v1/chat/stream`, reads SSE events,
  * and translates them into local React state suitable for rendering.
+ *
+ * On mount, the hook checks `localStorage` for the active conversation id;
+ * if present, it fetches the persisted messages from
+ * `GET /api/v1/conversations/{id}` and rehydrates the turn list so a page
+ * refresh restores the thread. The first `start` SSE event tells us which
+ * conversation we're in (the backend creates one when the client doesn't
+ * pass one); we capture it, store it, and echo it on every subsequent
+ * request so all turns share the same Conversation row.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { fetchConversation, type AssistantBlock, type MessageRow } from "@/api/endpoints/conversations";
 import { postSSE } from "@/api/sse";
 
 export type ToolCall = {
@@ -26,15 +35,105 @@ export type ChatTurn = {
 };
 
 const TREE_ID = "00000000-0000-0000-0000-000000000000";
+const STORAGE_KEY = "mft.activeConversation";
 
 type SseEventData = Record<string, unknown> & { text?: string };
+
+function readStoredConversationId(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function storeConversationId(id: string | null) {
+  if (typeof window === "undefined") return;
+  try {
+    if (id === null) {
+      window.localStorage.removeItem(STORAGE_KEY);
+    } else {
+      window.localStorage.setItem(STORAGE_KEY, id);
+    }
+  } catch {
+    // localStorage may be disabled (private mode); fail silently.
+  }
+}
+
+function turnsFromMessages(messages: MessageRow[]): ChatTurn[] {
+  const turns: ChatTurn[] = [];
+  for (const m of messages) {
+    if (m.role === "user") {
+      const text = m.content
+        .map((b) => (b.type === "text" ? b.text : ""))
+        .join("");
+      turns.push({ id: m.id, role: "user", content: text });
+    } else if (m.role === "assistant") {
+      const turn: ChatTurn = {
+        id: m.id,
+        role: "assistant",
+        content: "",
+        toolCalls: [],
+        proposalIds: [],
+      };
+      for (const block of m.content as AssistantBlock[]) {
+        if (block.type === "text") {
+          turn.content += block.text;
+        } else if (block.type === "tool_use") {
+          turn.toolCalls = [
+            ...(turn.toolCalls ?? []),
+            {
+              id: block.id,
+              name: block.name,
+              status: block.is_error ? "error" : "ok",
+              input: block.input,
+              output: block.output,
+            },
+          ];
+        } else if (block.type === "proposals_summary") {
+          turn.proposalIds = [...(turn.proposalIds ?? []), ...block.proposal_ids];
+        }
+      }
+      turns.push(turn);
+    }
+  }
+  return turns;
+}
 
 export function useChatStream() {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [busy, setBusy] = useState(false);
-  const [conversationId, setConversationId] = useState<string | null>(null);
-  const conversationIdRef = useRef<string | null>(null);
+  const [conversationId, setConversationId] = useState<string | null>(() =>
+    readStoredConversationId(),
+  );
+  const conversationIdRef = useRef<string | null>(conversationId);
   const abortRef = useRef<AbortController | null>(null);
+  const restoredRef = useRef(false);
+
+  // On mount, hydrate the previously-active conversation from the server.
+  useEffect(() => {
+    const id = conversationIdRef.current;
+    if (!id || restoredRef.current) return;
+    restoredRef.current = true;
+    let cancelled = false;
+    (async () => {
+      try {
+        const detail = await fetchConversation(id);
+        if (cancelled) return;
+        setTurns(turnsFromMessages(detail.messages));
+      } catch {
+        if (cancelled) return;
+        // Stale or deleted conversation; reset.
+        conversationIdRef.current = null;
+        setConversationId(null);
+        storeConversationId(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Cancel any in-flight request on unmount.
   useEffect(
@@ -47,6 +146,16 @@ export function useChatStream() {
   const stop = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
+  }, []);
+
+  const newChat = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    conversationIdRef.current = null;
+    setConversationId(null);
+    storeConversationId(null);
+    setTurns([]);
+    restoredRef.current = true; // prevent re-hydrating on next render
   }, []);
 
   const send = useCallback(
@@ -71,8 +180,7 @@ export function useChatStream() {
 
       setTurns((prev) => {
         const history = prev.filter((t) => !t.pending && !t.error);
-        const next = [...history, userTurn, pending];
-        return next;
+        return [...history, userTurn, pending];
       });
 
       const history = turns
@@ -99,6 +207,7 @@ export function useChatStream() {
             if (cid && cid !== conversationIdRef.current) {
               conversationIdRef.current = cid;
               setConversationId(cid);
+              storeConversationId(cid);
             }
           }
           setTurns((prev) =>
@@ -134,7 +243,7 @@ export function useChatStream() {
     [busy, turns],
   );
 
-  return { turns, busy, send, stop, conversationId };
+  return { turns, busy, send, stop, newChat, conversationId };
 }
 
 function applyEvent(turn: ChatTurn, type: string, data: SseEventData): ChatTurn {
@@ -154,7 +263,7 @@ function applyEvent(turn: ChatTurn, type: string, data: SseEventData): ChatTurn 
       return {
         ...turn,
         toolCalls: (turn.toolCalls ?? []).map((c) =>
-          c.id === id ? { ...c, input: data?.input } : c,
+          c.id === id ? { ...c, input: data?.input ?? c.input } : c,
         ),
       };
     }
