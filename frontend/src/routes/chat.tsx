@@ -1,109 +1,42 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import { apiFetch } from "@/api/client";
+import { ProposalLink } from "@/features/chat/ProposalLink";
+import { ToolCallCard } from "@/features/chat/ToolCallCard";
+import { useChatStream, type ChatTurn } from "@/features/chat/useChatStream";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/chat")({
   component: ChatPage,
 });
 
-type ChatTurn = {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  pending?: boolean;
-  error?: boolean;
-};
-
-type ChatResponse = {
-  text: string;
-  model: string;
-  provider: string;
-};
-
-const TREE_ID = "00000000-0000-0000-0000-000000000000";
-
 function ChatPage() {
-  const [prompt, setPrompt] = useState("");
-  const [turns, setTurns] = useState<ChatTurn[]>([]);
-  const [busy, setBusy] = useState(false);
+  const { turns, busy, send, stop } = useChatStream();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const draftRef = useRef("");
 
-  // Auto-scroll to the latest message whenever turns change.
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [turns]);
 
-  // Auto-grow the composer up to a max height.
-  useEffect(() => {
-    const el = inputRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
-  }, [prompt]);
-
-  async function send() {
-    const trimmed = prompt.trim();
-    if (!trimmed || busy) return;
-
-    const userTurn: ChatTurn = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content: trimmed,
-    };
-    const pendingId = crypto.randomUUID();
-    const pending: ChatTurn = {
-      id: pendingId,
-      role: "assistant",
-      content: "",
-      pending: true,
-    };
-
-    // Snapshot the history we'll send (everything before this user turn).
-    const history = turns
-      .filter((t) => !t.pending && !t.error)
-      .map((t) => ({ role: t.role, content: t.content }));
-
-    setTurns((prev) => [...prev, userTurn, pending]);
-    setPrompt("");
-    setBusy(true);
-
-    try {
-      const res = await apiFetch<ChatResponse>("/api/v1/chat", {
-        method: "POST",
-        body: JSON.stringify({
-          tree_id: TREE_ID,
-          message: trimmed,
-          history,
-        }),
-      });
-      setTurns((prev) =>
-        prev.map((t) => (t.id === pendingId ? { ...t, pending: false, content: res.text } : t)),
-      );
-    } catch (e) {
-      const message = (e as { message?: string }).message ?? String(e);
-      setTurns((prev) =>
-        prev.map((t) =>
-          t.id === pendingId
-            ? { ...t, pending: false, error: true, content: `Error: ${message}` }
-            : t,
-        ),
-      );
-    } finally {
-      setBusy(false);
-      inputRef.current?.focus();
+  function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      submit();
     }
   }
 
-  function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    // Enter to send, Shift+Enter for newline. Standard chat UX.
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      send();
+  function submit() {
+    const text = draftRef.current;
+    if (!text.trim() || busy) return;
+    void send(text);
+    draftRef.current = "";
+    if (inputRef.current) {
+      inputRef.current.value = "";
+      inputRef.current.style.height = "auto";
     }
   }
 
@@ -112,7 +45,8 @@ function ChatPage() {
       <header className="border-b border-zinc-200 bg-white px-6 py-4">
         <h1 className="text-xl font-semibold">Chat</h1>
         <p className="text-xs text-zinc-500">
-          Ask about your tree. Multi-turn context is sent on each request.
+          Ask about your tree. The assistant can also store records by queueing proposals you
+          review in the Proposals page.
         </p>
       </header>
 
@@ -124,10 +58,7 @@ function ChatPage() {
             {turns.map((turn) => (
               <li
                 key={turn.id}
-                className={cn(
-                  "flex w-full",
-                  turn.role === "user" ? "justify-end" : "justify-start",
-                )}
+                className={cn("flex w-full", turn.role === "user" ? "justify-end" : "justify-start")}
               >
                 <Bubble turn={turn} />
               </li>
@@ -140,27 +71,39 @@ function ChatPage() {
         className="border-t border-zinc-200 bg-white px-4 py-3 sm:px-6"
         onSubmit={(e) => {
           e.preventDefault();
-          send();
+          submit();
         }}
       >
         <div className="mx-auto flex max-w-3xl items-end gap-2">
           <textarea
             ref={inputRef}
-            className="flex-1 resize-none rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
+            className="flex-1 resize-none rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
             placeholder="Ask a question. Shift+Enter for a new line."
             rows={1}
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
+            onChange={(e) => {
+              draftRef.current = e.target.value;
+              const el = e.currentTarget;
+              el.style.height = "auto";
+              el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+            }}
             onKeyDown={onKeyDown}
-            disabled={busy}
           />
-          <button
-            type="submit"
-            className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={busy || !prompt.trim()}
-          >
-            {busy ? "Sending..." : "Send"}
-          </button>
+          {busy ? (
+            <button
+              type="button"
+              onClick={stop}
+              className="inline-flex items-center justify-center rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm hover:bg-zinc-50"
+            >
+              Stop
+            </button>
+          ) : (
+            <button
+              type="submit"
+              className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Send
+            </button>
+          )}
         </div>
       </form>
     </section>
@@ -180,13 +123,25 @@ function Bubble({ turn }: { turn: ChatTurn }) {
             : "rounded-bl-sm border border-zinc-200 bg-white text-zinc-900",
       )}
     >
-      {turn.pending ? (
+      {turn.toolCalls && turn.toolCalls.length > 0 ? (
+        <div className="mb-2 flex flex-col gap-1">
+          {turn.toolCalls.map((call) => (
+            <ToolCallCard key={call.id} call={call} />
+          ))}
+        </div>
+      ) : null}
+      {turn.content ? (
+        isUser ? (
+          <p className="whitespace-pre-wrap break-words">{turn.content}</p>
+        ) : (
+          <Markdown content={turn.content} />
+        )
+      ) : turn.pending ? (
         <Pending />
-      ) : isUser ? (
-        <p className="whitespace-pre-wrap break-words">{turn.content}</p>
-      ) : (
-        <Markdown content={turn.content} />
-      )}
+      ) : null}
+      {!isUser && turn.proposalIds && turn.proposalIds.length > 0 ? (
+        <ProposalLink ids={turn.proposalIds} />
+      ) : null}
     </div>
   );
 }
@@ -238,8 +193,8 @@ function EmptyState() {
       <div className="mb-2 text-4xl">💬</div>
       <h2 className="text-lg font-semibold text-zinc-900">Start a conversation</h2>
       <p className="mt-1 text-sm text-zinc-500">
-        Ask the assistant about your tree, a person, a date, or a document. Each turn carries the
-        previous context, so you can ask follow-ups.
+        Ask the assistant about your tree, give it new records to file, or have it search for
+        what's already there. New records get queued as proposals you review.
       </p>
     </div>
   );
