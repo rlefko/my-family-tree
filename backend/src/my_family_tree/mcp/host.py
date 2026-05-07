@@ -19,11 +19,7 @@ if TYPE_CHECKING:
     from my_family_tree.core.config import Settings
     from my_family_tree.external.genealogy import GenealogyService
     from my_family_tree.external.web_search import WebSearchService
-
-    # Forward-declared so this module doesn't import the ingest service
-    # (which lives in `services/external_ingest.py` and pulls in storage +
-    # embedding clients) at type-check time.
-    ExternalIngestService = Any
+    from my_family_tree.services.external_ingest import ExternalIngestService
 
 log = get_logger(__name__)
 
