@@ -4,6 +4,7 @@ import {
   FileText,
   Home,
   ListChecks,
+  Loader2,
   MessageCircle,
   Network,
   Users,
@@ -12,6 +13,8 @@ import {
 import type { ReactNode } from "react";
 
 import { useHealth } from "@/api/endpoints/health";
+import { Tooltip } from "@/components/ui/tooltip";
+import { useChatStream } from "@/features/chat/ChatStreamProvider";
 import { env } from "@/lib/env";
 import { cn } from "@/lib/utils";
 
@@ -31,6 +34,7 @@ const NAV: {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const health = useHealth();
+  const chat = useChatStream();
   return (
     <div className="flex h-full">
       <aside className="flex w-56 flex-col border-r border-zinc-200 bg-white">
@@ -38,6 +42,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <nav className="flex-1 space-y-0.5 px-2">
           {NAV.map((item) => {
             const Icon = item.icon;
+            const isChat = item.to === "/chat";
             return (
               <Link
                 key={item.to}
@@ -48,7 +53,28 @@ export function AppShell({ children }: { children: ReactNode }) {
                 activeProps={{ className: "bg-zinc-100 font-medium text-zinc-900" }}
               >
                 <Icon className="h-4 w-4" />
-                {item.label}
+                <span className="flex-1">{item.label}</span>
+                {isChat && chat.busy ? (
+                  <Tooltip content="Agent is working — click to view">
+                    <span
+                      className="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700"
+                      aria-label="Agent working"
+                    >
+                      <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                    </span>
+                  </Tooltip>
+                ) : isChat && chat.unseenCount > 0 ? (
+                  <Tooltip
+                    content={`${chat.unseenCount} new chat result${chat.unseenCount === 1 ? "" : "s"}`}
+                  >
+                    <span
+                      className="inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-indigo-600 px-1 text-[10px] font-semibold text-white"
+                      aria-label={`${chat.unseenCount} new chat results`}
+                    >
+                      {chat.unseenCount}
+                    </span>
+                  </Tooltip>
+                ) : null}
               </Link>
             );
           })}

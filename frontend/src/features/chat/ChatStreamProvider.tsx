@@ -1,22 +1,26 @@
 /**
- * Chat streaming hook. POSTs to `/api/v1/chat/stream`, reads SSE events,
- * and translates them into local React state suitable for rendering.
+ * App-level provider that owns the chat-streaming state. Lives outside the
+ * `/chat` route so navigating to other pages does NOT unmount the hook,
+ * which previously cancelled the in-flight SSE connection (the AbortController
+ * in the unmount cleanup fired and tore down the OpenAI request mid-stream).
  *
- * On mount, the hook checks `localStorage` for the active conversation id;
- * if present, it fetches the persisted messages from
- * `GET /api/v1/conversations/{id}` and rehydrates the turn list so a page
- * refresh / tab navigation restores the thread. The first `start` SSE event
- * tells us which conversation we're in (the backend creates one when the
- * client doesn't pass one); we capture it, store it, and echo it on every
- * subsequent request so all turns share the same Conversation row.
- *
- * Thinking surface: OpenAI Responses-API reasoning summaries arrive as
- * `thinking_delta` events. We accumulate them on the pending turn so the
- * UI can render a "Thinking..." pill that updates as the model deliberates.
+ * Components subscribe via `useChatStream()`. The sidebar reads the busy
+ * flag and the unseen-result counter to badge the Chat nav link; the chat
+ * page reads the full turn list.
  */
 
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouterState } from "@tanstack/react-router";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { toast } from "sonner";
 
 import {
   fetchConversation,
@@ -111,24 +115,49 @@ function turnsFromMessages(messages: MessageRow[]): ChatTurn[] {
   return turns;
 }
 
-export function useChatStream() {
+type ChatStreamValue = {
+  turns: ChatTurn[];
+  busy: boolean;
+  conversationId: string | null;
+  unseenCount: number;
+  send: (text: string) => Promise<void>;
+  stop: () => void;
+  newChat: () => void;
+  switchConversation: (id: string) => Promise<void>;
+  markSeen: () => void;
+};
+
+const ChatStreamContext = createContext<ChatStreamValue | null>(null);
+
+export function useChatStream(): ChatStreamValue {
+  const ctx = useContext(ChatStreamContext);
+  if (ctx === null) {
+    throw new Error("useChatStream must be used inside <ChatStreamProvider>");
+  }
+  return ctx;
+}
+
+export function ChatStreamProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
+  const routerState = useRouterState({ select: (s) => s.location.pathname });
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [busy, setBusy] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(() =>
     readStoredConversationId(),
   );
+  const [unseenCount, setUnseenCount] = useState(0);
   const conversationIdRef = useRef<string | null>(conversationId);
   const abortRef = useRef<AbortController | null>(null);
   const restoredRef = useRef(false);
   const userInteractedRef = useRef(false);
+  const onChatPageRef = useRef<boolean>(routerState === "/chat");
 
-  // Hydrate the previously-active conversation from the server. Three races
-  // to defend against:
-  // (a) component unmounts mid-fetch -> `cancelled` flag
-  // (b) user starts typing/sending while fetch is in flight -> userInteractedRef
-  // (c) rehydrate completes after a new turn has begun -> only setTurns when
-  //     prev list is empty, so we never clobber an in-flight pending turn.
+  // Track whether the user is currently viewing /chat so we know whether
+  // toast/badge notifications are needed when a turn finishes.
+  useEffect(() => {
+    onChatPageRef.current = routerState === "/chat";
+  }, [routerState]);
+
   const loadConversation = useCallback(async (id: string) => {
     try {
       const detail = await fetchConversation(id);
@@ -138,8 +167,6 @@ export function useChatStream() {
       setTurns((prev) => (prev.length === 0 ? restored : prev));
     } catch (e) {
       if (DEBUG) console.warn("[chat] restore failed", e);
-      // Stale or deleted conversation; reset so the next send creates a
-      // fresh thread instead of stamping onto a server-side ghost.
       conversationIdRef.current = null;
       setConversationId(null);
       storeConversationId(null);
@@ -152,14 +179,6 @@ export function useChatStream() {
     restoredRef.current = true;
     void loadConversation(id);
   }, [loadConversation]);
-
-  // Cancel any in-flight request on unmount.
-  useEffect(
-    () => () => {
-      abortRef.current?.abort();
-    },
-    [],
-  );
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
@@ -174,7 +193,11 @@ export function useChatStream() {
     storeConversationId(null);
     setTurns([]);
     restoredRef.current = true;
-    userInteractedRef.current = false; // allow rehydrate again if user picks an old conversation
+    userInteractedRef.current = false;
+  }, []);
+
+  const markSeen = useCallback(() => {
+    setUnseenCount(0);
   }, []);
 
   const switchConversation = useCallback(
@@ -184,7 +207,7 @@ export function useChatStream() {
       conversationIdRef.current = id;
       setConversationId(id);
       storeConversationId(id);
-      setTurns([]); // wipe before reload so old turns don't briefly show
+      setTurns([]);
       restoredRef.current = true;
       userInteractedRef.current = false;
       await loadConversation(id);
@@ -219,9 +242,14 @@ export function useChatStream() {
         return [...history, userTurn, pending];
       });
 
-      const history = turns
-        .filter((t) => !t.pending && !t.error)
-        .map((t) => ({ role: t.role, content: t.content }));
+      // Capture history BEFORE we add the new pending turn.
+      let historySnapshot: { role: string; content: string }[] = [];
+      setTurns((prev) => {
+        historySnapshot = prev
+          .filter((t) => !t.pending && !t.error && t.id !== userTurn.id && t.id !== pendingId)
+          .map((t) => ({ role: t.role, content: t.content }));
+        return prev;
+      });
 
       setBusy(true);
       const controller = new AbortController();
@@ -233,7 +261,7 @@ export function useChatStream() {
           {
             tree_id: TREE_ID,
             message: trimmed,
-            history,
+            history: historySnapshot,
             conversation_id: conversationIdRef.current,
           },
           { signal: controller.signal },
@@ -293,17 +321,45 @@ export function useChatStream() {
       } finally {
         setBusy(false);
         abortRef.current = null;
-        // Mark pending false defensively in case the stream ended without a `done` event.
-        setTurns((prev) => prev.map((t) => (t.id === pendingId ? { ...t, pending: false } : t)));
-        // Refresh the sidebar so a brand-new conversation appears immediately
-        // and existing rows pick up the new last_message_at.
+        // Defensive: if the stream ended without a `done` event, clear pending.
+        let finalized: ChatTurn | undefined;
+        setTurns((prev) =>
+          prev.map((t) => {
+            if (t.id !== pendingId) return t;
+            const updated = { ...t, pending: false };
+            finalized = updated;
+            return updated;
+          }),
+        );
         qc.invalidateQueries({ queryKey: ["conversations"] });
+
+        // Notify the user if they're not currently looking at /chat.
+        if (!onChatPageRef.current && finalized && !finalized.error) {
+          setUnseenCount((c) => c + 1);
+          const proposalCount = finalized.proposalIds?.length ?? 0;
+          const summary = proposalCount
+            ? `Chat finished — ${proposalCount} proposal${proposalCount === 1 ? "" : "s"} queued`
+            : "Chat finished";
+          toast(summary, { description: "Open Chat to review." });
+        }
       }
     },
-    [busy, turns, qc],
+    [busy, qc],
   );
 
-  return { turns, busy, send, stop, newChat, switchConversation, conversationId };
+  const value: ChatStreamValue = {
+    turns,
+    busy,
+    conversationId,
+    unseenCount,
+    send,
+    stop,
+    newChat,
+    switchConversation,
+    markSeen,
+  };
+
+  return <ChatStreamContext.Provider value={value}>{children}</ChatStreamContext.Provider>;
 }
 
 function applyEvent(turn: ChatTurn, type: string, data: SseEventData): ChatTurn {
