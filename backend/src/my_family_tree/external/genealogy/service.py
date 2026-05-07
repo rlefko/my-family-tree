@@ -34,12 +34,12 @@ class GenealogyService:
         providers: dict[str, GenealogyProvider] = {}
         if settings.wikitree_enabled:
             providers["wikitree"] = build_wikitree_provider(
-                user_agent=settings.wikitree_user_agent,
+                user_agent=settings.genealogy_user_agent,
                 timeout_s=settings.request_timeout_s,
             )
         if settings.wikidata_enabled:
             providers["wikidata"] = build_wikidata_provider(
-                user_agent=settings.wikitree_user_agent,
+                user_agent=settings.genealogy_user_agent,
                 timeout_s=settings.request_timeout_s,
             )
         if settings.familysearch_enabled:
@@ -50,7 +50,7 @@ class GenealogyService:
                 client_secret=settings.familysearch_client_secret,
                 environment=settings.familysearch_environment,
                 timeout_s=settings.request_timeout_s,
-                user_agent=settings.wikitree_user_agent,
+                user_agent=settings.genealogy_user_agent,
             )
         if not providers:
             return None

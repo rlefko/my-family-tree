@@ -102,11 +102,11 @@ WEB_SEARCH_MAX_BYTES=5000000
 
 # Genealogy
 WIKITREE_ENABLED=true
-WIKITREE_USER_AGENT=my-family-tree/0.1 (+https://github.com/rlefkowitz/my-family-tree)
 WIKIDATA_ENABLED=true
 FAMILYSEARCH_CLIENT_ID=
 FAMILYSEARCH_CLIENT_SECRET=
 FAMILYSEARCH_ENVIRONMENT=production # "integration" | "beta" | "production"
+GENEALOGY_USER_AGENT=my-family-tree/0.1 (+https://github.com/rlefkowitz/my-family-tree)
 GENEALOGY_MAX_RESULTS=10
 GENEALOGY_REQUEST_TIMEOUT_S=30.0
 ```
