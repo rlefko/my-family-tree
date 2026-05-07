@@ -120,6 +120,19 @@ class ChatAgent:
                         and result.output.get("proposal_id") is not None
                     ):
                         proposal_ids.append(str(result.output["proposal_id"]))
+                    # Re-emit `tool_use_finished` with the parsed input now
+                    # that we have it; this is what the chat UI shows in the
+                    # tool-call card. The earlier bare `tool_use_finished`
+                    # already fired from `_handle_event`; this one carries
+                    # the same id plus the input payload.
+                    yield ChatTurnEvent(
+                        type="tool_use_finished",
+                        payload={
+                            "id": block.id,
+                            "name": block.name,
+                            "input": block.input,
+                        },
+                    )
                     yield ChatTurnEvent(
                         type="tool_result",
                         payload={
