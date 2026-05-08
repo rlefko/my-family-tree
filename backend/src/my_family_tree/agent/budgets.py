@@ -9,9 +9,9 @@ from my_family_tree.core.errors import BudgetExceededError
 
 @dataclass(slots=True)
 class Budgets:
-    tokens: int = 200_000
-    tool_calls: int = 40
-    wall_clock_s: int = 300
+    tokens: int = 2_000_000
+    tool_calls: int = 500
+    wall_clock_s: int = 1800
 
     def check(self, *, tokens_used: int, tool_calls_used: int) -> None:
         if tokens_used > self.tokens:
