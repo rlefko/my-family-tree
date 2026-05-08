@@ -46,6 +46,7 @@ class _QueueSink:
     def emit(self, event: dict[str, Any]) -> None:
         self._queue.put_nowait(event)
 
+
 log = get_logger(__name__)
 
 
