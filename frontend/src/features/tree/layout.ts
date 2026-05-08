@@ -20,8 +20,8 @@
  *      down x positions with the unit's bar centered over its children.
  *      y comes purely from generation.
  *   6. Emit person nodes, union nodes, couple half-edges, and parent edges.
- *      The union node sits at its dagre-free coordinate (between the two
- *      spouses) so the couple half-edges are short straight lines.
+ *      Each union heart already sits between its spouses from phase 5, so
+ *      the couple half-edges are short straight lines.
  *
  * Notes on edge cases:
  *   - Sibling clusters with no asserted parents stay clustered via the
@@ -210,10 +210,7 @@ function parseBirthYear(person: PersonNode): number | null {
  * parsable birth year sink below dated persons but stay clustered
  * alphabetically.
  */
-function compareSiblingPersons(
-  a: PersonNode | undefined,
-  b: PersonNode | undefined,
-): number {
+function compareSiblingPersons(a: PersonNode | undefined, b: PersonNode | undefined): number {
   const ya = a ? parseBirthYear(a) : null;
   const yb = b ? parseBirthYear(b) : null;
   if (ya !== null && yb !== null && ya !== yb) return ya - yb;
@@ -421,19 +418,13 @@ function buildFamilyUnits(
   return { units, unitOfPerson };
 }
 
-function orderSiblings(
-  units: Map<string, FamilyUnit>,
-  personById: Map<string, PersonNode>,
-): void {
+function orderSiblings(units: Map<string, FamilyUnit>, personById: Map<string, PersonNode>): void {
   for (const unit of units.values()) {
     unit.childUnitIds.sort((a, b) => {
       const ua = units.get(a);
       const ub = units.get(b);
       if (!ua || !ub) return 0;
-      return compareSiblingPersons(
-        personById.get(ua.spouses[0]),
-        personById.get(ub.spouses[0]),
-      );
+      return compareSiblingPersons(personById.get(ua.spouses[0]), personById.get(ub.spouses[0]));
     });
   }
 }
