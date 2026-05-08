@@ -69,10 +69,8 @@ async def hybrid_search(
         scores[cid] = scores.get(cid, 0.0) + 1.0 / (k_rrf + rank)
 
     if embedding is not None:
-        # Use the comparator helper rather than `op("<=>")` so the result column
-        # is typed as Float. With the bare operator SQLAlchemy infers the
-        # return type from the LHS (HALFVEC), routes the cosine-distance scalar
-        # through `HalfVector._from_db`, and crashes on `value[1:-1]`.
+        # Use `cosine_distance()` not `op("<=>")` so the result is Float-typed;
+        # otherwise the scalar distance is routed through `HalfVector._from_db` and crashes.
         distance = Chunk.embedding_half.cosine_distance(embedding).label("distance")
         vec_stmt = (
             select(Chunk, Document.original_filename, Document.kind, distance)

@@ -116,10 +116,6 @@ def test_cosine_distance_expression_returns_float_type() -> None:
     `return_type=Float`, sidestepping the deserializer."""
     expr = Chunk.embedding_half.cosine_distance([0.0] * 3072)
     assert isinstance(expr.type, Float)
-    # Sanity check: the bare operator returns the LHS type, which is what
-    # made the bug possible. If a future SQLAlchemy or pgvector release
-    # changes this default, the assertion above can be tightened or
-    # relaxed accordingly.
     bare = Chunk.embedding_half.op("<=>")([0.0] * 3072)
     assert not isinstance(bare.type, Float)
 
