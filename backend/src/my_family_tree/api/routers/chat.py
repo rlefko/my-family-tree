@@ -464,7 +464,7 @@ async def _build_messages(
     current_resolved, _ = await _resolve_attachments(
         request,
         current_doc_ids,
-        inline_budget=remaining if current_doc_ids else 0,
+        inline_budget=remaining,
     )
     current_blocks: list[ContentBlock] = _content_blocks_for_user_turn(
         req.message, current_resolved
