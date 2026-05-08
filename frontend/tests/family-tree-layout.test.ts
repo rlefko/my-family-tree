@@ -494,29 +494,14 @@ describe("buildLayout (family tree)", () => {
     // Greg's parents are on the LEFT (Anne + Ben), so Greg should be on
     // the LEFT in the couple bar after alignment.
     expect(garyX).toBeLessThan(rebeccaX);
-
-    // Sanity: the couple half-edges still source from each spouse's
-    // outward handle, with the LEFT spouse's right handle and the RIGHT
-    // spouse's left handle pointing at the heart.
-    // (Implicit because we assert positions; no edge-routing assertion
-    // needed here, only that the underlying layout choice is correct.)
   });
 
   it("leaves spouse order alone when only one spouse has parents in the data", () => {
     // Alice has parents on the chart; Bob is a marrying-in spouse with no
     // recorded parents. The alignment pass has nothing to compare and must
     // not alter the default id-sorted order.
-    const motherless = {
-      ...personA,
-      id: "p-bob",
-      display_name: "Bob",
-      sex: "male" as const,
-    };
-    const aliceWithParents = {
-      ...personA,
-      id: "p-alice",
-      display_name: "Alice",
-    };
+    const motherless = { ...personB, id: "p-bob" };
+    const aliceWithParents = { ...personA, id: "p-alice" };
     const aliceMom = {
       ...personA,
       id: "p-mom",
