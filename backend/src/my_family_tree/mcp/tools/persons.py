@@ -1,4 +1,4 @@
-"""Person tools: search, get, traverse, propose-create / update / merge."""
+"""Person tools: search, get, traverse, relations, propose-create / update / merge."""
 
 from __future__ import annotations
 
@@ -6,7 +6,8 @@ from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
-from sqlalchemy import func, or_, select
+from sqlalchemy import Select, func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from my_family_tree.core.dates import DatePrecision
 from my_family_tree.core.errors import NotFoundError
@@ -20,7 +21,7 @@ from my_family_tree.mcp.schemas import (
     ProposalRef,
 )
 from my_family_tree.mcp.tools.proposals import make_proposal
-from my_family_tree.models.enums import PersonStatus, ProposalAction, RelType, SubjectType
+from my_family_tree.models.enums import PersonStatus, ProposalAction, RelType, Sex, SubjectType
 from my_family_tree.models.person import Alias, Person
 from my_family_tree.models.relationship import Relationship
 
@@ -197,6 +198,176 @@ async def person_traverse(ctx: ToolContext, payload: TraversalInput) -> Traversa
                         frontier.append((child, gen + 1, _label_for("child", gen + 1)))
 
         return TraversalOutput(root_id=root.id, nodes=nodes)
+
+
+RelationKind = Literal["children", "parents", "siblings", "spouses"]
+
+
+class PersonRelationsInput(BaseModel):
+    person_id: UUID
+    relation: RelationKind
+    sex_filter: Literal["male", "female"] | None = None
+    include_deceased: bool = True
+    limit: int = Field(default=50, ge=1, le=200)
+
+
+class PersonRelationsOutput(BaseModel):
+    root_id: UUID
+    relation: RelationKind
+    results: list[PersonSummary]
+
+
+@registry.tool(
+    name="person_relations",
+    description=(
+        "List a person's immediate relatives in one direction without walking deeper. "
+        "`relation` is `children`, `parents`, `siblings`, or `spouses`. Pass "
+        "`sex_filter='male'` for sons, `sex_filter='female'` for daughters. Set "
+        "`include_deceased=False` to exclude people whose `is_living=False`. Returns "
+        "up to `limit` person summaries (default 50). Prefer this over "
+        "`person_traverse` for any single-generation question."
+    ),
+    input_model=PersonRelationsInput,
+    output_model=PersonRelationsOutput,
+    capability=Capability.READ,
+)
+async def person_relations(
+    ctx: ToolContext, payload: PersonRelationsInput
+) -> PersonRelationsOutput:
+    async with session_scope(ctx.session_factory) as session:
+        root = await _resolve_canonical_person(session, ctx.tree_id, payload.person_id)
+        stmt = _relations_stmt(root.id, payload.relation, ctx.tree_id)
+        if payload.sex_filter is not None:
+            stmt = stmt.where(Person.sex == Sex(payload.sex_filter))
+        if not payload.include_deceased:
+            stmt = stmt.where(Person.is_living.is_(True))
+        stmt = stmt.limit(payload.limit)
+        rows = list((await session.execute(stmt)).scalars().all())
+        return PersonRelationsOutput(
+            root_id=root.id,
+            relation=payload.relation,
+            results=[_to_summary(p) for p in rows],
+        )
+
+
+class PersonCountRelationsInput(BaseModel):
+    person_id: UUID
+
+
+class PersonCountRelationsOutput(BaseModel):
+    root_id: UUID
+    children: int
+    sons: int
+    daughters: int
+    parents: int
+    siblings: int
+    spouses: int
+
+
+@registry.tool(
+    name="person_count_relations",
+    description=(
+        "Count a person's immediate relatives without enumerating them. Returns "
+        "totals for children, sons (children with sex=male), daughters "
+        "(sex=female), parents, siblings (people who share at least one parent), "
+        "and spouses. Use this for 'how many' questions to keep the chat context "
+        "compact."
+    ),
+    input_model=PersonCountRelationsInput,
+    output_model=PersonCountRelationsOutput,
+    capability=Capability.READ,
+)
+async def person_count_relations(
+    ctx: ToolContext, payload: PersonCountRelationsInput
+) -> PersonCountRelationsOutput:
+    async with session_scope(ctx.session_factory) as session:
+        root = await _resolve_canonical_person(session, ctx.tree_id, payload.person_id)
+
+        async def _count(stmt: Select[tuple[Person]]) -> int:
+            count_stmt = select(func.count()).select_from(stmt.subquery())
+            return int((await session.execute(count_stmt)).scalar_one())
+
+        children_stmt = _relations_stmt(root.id, "children", ctx.tree_id)
+        sons_stmt = children_stmt.where(Person.sex == Sex.male)
+        daughters_stmt = children_stmt.where(Person.sex == Sex.female)
+        parents_stmt = _relations_stmt(root.id, "parents", ctx.tree_id)
+        siblings_stmt = _relations_stmt(root.id, "siblings", ctx.tree_id)
+        spouses_stmt = _relations_stmt(root.id, "spouses", ctx.tree_id)
+
+        return PersonCountRelationsOutput(
+            root_id=root.id,
+            children=await _count(children_stmt),
+            sons=await _count(sons_stmt),
+            daughters=await _count(daughters_stmt),
+            parents=await _count(parents_stmt),
+            siblings=await _count(siblings_stmt),
+            spouses=await _count(spouses_stmt),
+        )
+
+
+def _relations_stmt(
+    root_id: UUID, relation: RelationKind, tree_id: UUID
+) -> Select[tuple[Person]]:
+    """Build a `select(Person)` for one-hop relations to `root_id`. Filters
+    out merged or hidden persons. Symmetric edges (spouse_of, sibling_of) are
+    stored as two rows, so a `subject_id == root` predicate is enough; the
+    sibling case derives kin from shared `parent_of` edges instead so siblings
+    surface even when no explicit `sibling_of` row exists."""
+    base = select(Person).where(Person.status == PersonStatus.active)
+    if relation == "children":
+        return base.join(Relationship, Relationship.object_id == Person.id).where(
+            Relationship.tree_id == tree_id,
+            Relationship.type == RelType.parent_of,
+            Relationship.subject_id == root_id,
+        )
+    if relation == "parents":
+        return base.join(Relationship, Relationship.subject_id == Person.id).where(
+            Relationship.tree_id == tree_id,
+            Relationship.type == RelType.parent_of,
+            Relationship.object_id == root_id,
+        )
+    if relation == "spouses":
+        return base.join(Relationship, Relationship.object_id == Person.id).where(
+            Relationship.tree_id == tree_id,
+            Relationship.type == RelType.spouse_of,
+            Relationship.subject_id == root_id,
+        )
+    parents_subq = (
+        select(Relationship.subject_id)
+        .where(
+            Relationship.tree_id == tree_id,
+            Relationship.type == RelType.parent_of,
+            Relationship.object_id == root_id,
+        )
+        .scalar_subquery()
+    )
+    return (
+        base.join(Relationship, Relationship.object_id == Person.id)
+        .where(
+            Relationship.tree_id == tree_id,
+            Relationship.type == RelType.parent_of,
+            Relationship.subject_id.in_(parents_subq),
+            Person.id != root_id,
+        )
+        .distinct()
+    )
+
+
+async def _resolve_canonical_person(
+    session: AsyncSession, tree_id: UUID, person_id: UUID
+) -> Person:
+    """Fetch a person by id and follow `merged_into_id` redirects so callers
+    always see the canonical row. Mirrors the redirect loop in `person_get`
+    so behavior is consistent across the read surface."""
+    person = await session.get(Person, person_id)
+    if person is None or person.tree_id != tree_id:
+        raise NotFoundError(f"person {person_id} not found")
+    while person.status == PersonStatus.merged and person.merged_into_id is not None:
+        target = await session.get(Person, person.merged_into_id)
+        if target is None:
+            break
+        person = target
+    return person
 
 
 def _to_summary(p: Person) -> PersonSummary:
