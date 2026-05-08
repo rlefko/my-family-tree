@@ -106,7 +106,7 @@ class ToolHost:
             name=name,
             tree_id=tree_id,
             capability=str(tool.capability),
-            input=_redact_for_log(validated),
+            input=_redact(payload),
         )
         started = time.perf_counter()
         try:
@@ -131,14 +131,10 @@ class ToolHost:
         return result
 
 
-def _redact_for_log(model: BaseModel) -> dict[str, Any]:
-    """Render a tool input model as a JSON-safe dict with long strings and
-    long lists truncated. Walks recursively so a giant `body` buried inside
-    a nested propose payload is still bounded."""
-    return _redact(model.model_dump(mode="json"))
-
-
 def _redact(value: Any) -> Any:
+    """Recursively bound a JSON-safe value's strings and lists so a giant
+    `body` buried inside a nested propose payload can't flood the log
+    stream."""
     if isinstance(value, str):
         if len(value) > _LOG_STRING_MAX:
             return f"{value[:_LOG_STRING_MAX]}...<truncated {len(value) - _LOG_STRING_MAX} chars>"

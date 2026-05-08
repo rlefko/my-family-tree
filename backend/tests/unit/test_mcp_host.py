@@ -17,7 +17,7 @@ import structlog
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from my_family_tree.mcp.host import ToolContext, ToolHost, _redact_for_log
+from my_family_tree.mcp.host import ToolContext, ToolHost, _redact
 from my_family_tree.mcp.registry import Capability, ToolRegistry
 
 
@@ -65,7 +65,7 @@ async def test_successful_call_emits_start_then_end_with_duration() -> None:
     assert start["name"] == "fake_echo"
     assert start["tree_id"] == "00000000-0000-0000-0000-000000000001"
     assert start["capability"] == str(Capability.READ)
-    assert start["input"] == {"text": "hi", "items": [], "nested": {}}
+    assert start["input"] == {"text": "hi"}
 
     end = logs[1]
     assert end["name"] == "fake_echo"
@@ -95,20 +95,20 @@ async def test_failing_handler_logs_end_with_error_and_propagates() -> None:
 
 
 @pytest.mark.unit
-def test_redact_for_log_truncates_long_strings_at_top_level() -> None:
-    payload = _FakeIn(text="x" * 1000)
-    redacted = _redact_for_log(payload)
+def test_redact_truncates_long_strings_at_top_level() -> None:
+    redacted = _redact({"text": "x" * 1000})
     assert redacted["text"].startswith("x" * 500)
     assert "<truncated 500 chars>" in redacted["text"]
 
 
 @pytest.mark.unit
-def test_redact_for_log_walks_into_nested_dicts_and_lists() -> None:
-    payload = _FakeIn(
-        items=[f"item-{i}" for i in range(50)],
-        nested={"deep": {"body": "y" * 800}},
+def test_redact_walks_into_nested_dicts_and_lists() -> None:
+    redacted = _redact(
+        {
+            "items": [f"item-{i}" for i in range(50)],
+            "nested": {"deep": {"body": "y" * 800}},
+        }
     )
-    redacted = _redact_for_log(payload)
 
     assert len(redacted["items"]) == 21
     assert redacted["items"][-1] == {"_truncated": "30 more items"}
