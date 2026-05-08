@@ -31,6 +31,19 @@ export function stripInlineMarkdown(s: string): string {
     .trim();
 }
 
+// Reasoning summaries arrive as bold-prefixed steps joined by single
+// newlines. CommonMark treats a lone newline as a soft break, which collapses
+// every step into one paragraph and the section titles run into each other.
+// Promote any run of newlines (outside fenced code blocks, which we leave
+// untouched) to a blank-line paragraph break so each step renders as its own
+// paragraph in the expanded thinking body.
+export function paragraphizeReasoning(text: string): string {
+  return text
+    .split(/(```[\s\S]*?```)/g)
+    .map((segment, i) => (i % 2 === 1 ? segment : segment.replace(/\n+/g, "\n\n")))
+    .join("");
+}
+
 export function Trace({ trace, live }: { trace: TraceEntry[]; live: boolean }) {
   if (live) {
     // Inline list with no outer wrapper so the user does not have to click
@@ -122,7 +135,7 @@ function ThinkingBlock({ entry, live }: { entry: ThinkingEntry; live: boolean })
       </summary>
       <div className="border-t border-amber-200 px-2.5 py-2 text-amber-900 dark:border-amber-900 dark:text-amber-200">
         {entry.text ? (
-          <Markdown content={entry.text} />
+          <Markdown content={paragraphizeReasoning(entry.text)} />
         ) : (
           <span className="italic opacity-70">Thinking...</span>
         )}
