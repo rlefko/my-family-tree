@@ -9,7 +9,7 @@ import {
   Sparkles,
   Square,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -486,7 +486,10 @@ function PendingHero() {
   );
 }
 
-function Markdown({ content }: { content: string }) {
+// Memoized so frozen turn entries (past assistant content, sealed thinking
+// bursts) skip re-parsing markdown on every stream tick; only the active
+// entry's `content` reference changes per delta.
+const Markdown = memo(function Markdown({ content }: { content: string }) {
   return (
     <div className="prose-chat">
       <ReactMarkdown
@@ -506,7 +509,7 @@ function Markdown({ content }: { content: string }) {
       </ReactMarkdown>
     </div>
   );
-}
+});
 
 function EmptyState() {
   return (
