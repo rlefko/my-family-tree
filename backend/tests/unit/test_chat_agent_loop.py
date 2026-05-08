@@ -303,13 +303,9 @@ async def test_second_turn_sees_prior_tool_history_via_rehydrated_messages() -> 
     assert use_block.name == "person_search"
     assert use_block.input == {"query": "Anna"}
 
-    result_block = next(
-        b for b in tool_msgs[0].content if isinstance(b, ToolResultBlock)
-    )
+    result_block = next(b for b in tool_msgs[0].content if isinstance(b, ToolResultBlock))
     assert result_block.tool_use_id == "call_anna_search"
-    assert result_block.output == {
-        "results": [{"id": "p-anna", "display_name": "Anna Doe"}]
-    }
+    assert result_block.output == {"results": [{"id": "p-anna", "display_name": "Anna Doe"}]}
     assert result_block.is_error is False
 
     # The agent did not re-call person_search: with prior results visible in

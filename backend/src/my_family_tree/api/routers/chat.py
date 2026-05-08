@@ -7,7 +7,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
@@ -418,9 +418,7 @@ def _assistant_messages_from_content(
             name = str(block.get("name") or "")
             raw_input = block.get("input")
             input_dict = raw_input if isinstance(raw_input, dict) else {}
-            tool_uses.append(
-                ToolUseBlock(type="tool_use", id=call_id, name=name, input=input_dict)
-            )
+            tool_uses.append(ToolUseBlock(type="tool_use", id=call_id, name=name, input=input_dict))
             output = block.get("output")
             is_error = bool(block.get("is_error", False))
             if output is None:
@@ -471,44 +469,39 @@ _SESSION_STATE_HEADER = (
 )
 
 
+def _subject_update_fields(payload: dict[str, Any], pk: str) -> str:
+    keys = sorted(k for k in payload if k != pk)
+    return f"update fields: {', '.join(keys)}" if keys else "update"
+
+
+_SUBJECT_DISPATCH: dict[tuple[str, str], Callable[[dict[str, Any]], str]] = {
+    ("create", "person"): lambda p: str(p.get("display_name") or "(unnamed person)"),
+    ("update", "person"): lambda p: _subject_update_fields(p, "person_id"),
+    ("merge", "person"): lambda p: (
+        f"merge loser {p.get('loser_id')} into winner {p.get('winner_id')}"
+    ),
+    ("create", "relationship"): lambda p: (
+        f"{p.get('type') or 'relationship'}: {p.get('subject_id')} -> {p.get('object_id')}"
+    ),
+    ("delete", "relationship"): lambda p: f"delete relationship {p.get('relationship_id')}",
+    ("create", "event"): lambda p: f"{p.get('type') or 'event'} {p.get('date_text') or ''}".strip(),
+    ("update", "event"): lambda p: _subject_update_fields(p, "event_id"),
+    ("create", "place"): lambda p: str(p.get("name") or "(unnamed place)"),
+    ("create", ""): lambda p: str(p.get("title") or p.get("kind") or "source"),
+    ("accept_claim", ""): lambda p: f"accept claim {p.get('claim_id')}",
+    ("reject_claim", ""): lambda p: f"reject claim {p.get('claim_id')}",
+    ("resolve_conflict", ""): lambda p: f"resolve conflict {p.get('conflict_id')}",
+}
+
+
 def _proposal_subject(action: str, target_type: str | None, payload: dict[str, Any]) -> str:
     """One-line summary of a proposal's payload, dispatched on
     `(action, target_type)`. Falls back to a truncated JSON dump for
-    combinations the formatter does not know about so unknown shapes never
-    raise."""
-    key = (action, target_type or "")
-    if key == ("create", "person"):
-        return str(payload.get("display_name") or "(unnamed person)")
-    if key == ("update", "person"):
-        keys = sorted(k for k in payload if k != "person_id")
-        return f"update fields: {', '.join(keys)}" if keys else "update"
-    if key == ("merge", "person"):
-        return (
-            f"merge loser {payload.get('loser_id')} into winner "
-            f"{payload.get('winner_id')}"
-        )
-    if key == ("create", "relationship"):
-        rel_type = payload.get("type") or "relationship"
-        return f"{rel_type}: {payload.get('subject_id')} -> {payload.get('object_id')}"
-    if key == ("delete", "relationship"):
-        return f"delete relationship {payload.get('relationship_id')}"
-    if key == ("create", "event"):
-        ev_type = payload.get("type") or "event"
-        date_text = payload.get("date_text") or ""
-        return f"{ev_type} {date_text}".strip()
-    if key == ("update", "event"):
-        keys = sorted(k for k in payload if k != "event_id")
-        return f"update fields: {', '.join(keys)}" if keys else "update"
-    if key == ("create", "place"):
-        return str(payload.get("name") or "(unnamed place)")
-    if key == ("create", ""):
-        return str(payload.get("title") or payload.get("kind") or "source")
-    if key == ("accept_claim", ""):
-        return f"accept claim {payload.get('claim_id')}"
-    if key == ("reject_claim", ""):
-        return f"reject claim {payload.get('claim_id')}"
-    if key == ("resolve_conflict", ""):
-        return f"resolve conflict {payload.get('conflict_id')}"
+    combinations the dispatch table does not cover so unknown shapes
+    never raise."""
+    handler = _SUBJECT_DISPATCH.get((action, target_type or ""))
+    if handler is not None:
+        return handler(payload)
     return json.dumps(payload, sort_keys=True, default=str)[:80]
 
 
