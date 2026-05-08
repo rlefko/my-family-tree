@@ -417,4 +417,131 @@ describe("buildLayout (family tree)", () => {
     // Younger sibling sits to the right of older sibling.
     expect(findNode(nodes, "g3-a").position.x).toBeLessThan(findNode(nodes, "g3-b").position.x);
   });
+
+  it("swaps spouse positions so each spouse sits on the same side as their parents", () => {
+    // Two parent couples with deliberately inverted birth-year sort: the
+    // younger couple (Donna + Edgar, 1950) parents the LEFT child by id,
+    // the older couple (Anne + Ben, 1940) parents the RIGHT child by id.
+    // Without alignment the parent edges have to cross. With alignment the
+    // child whose parents are on the LEFT ends up on the LEFT.
+    const carol = {
+      ...personA,
+      id: "p-carol",
+      display_name: "Anne",
+      birth_text: "1940",
+    };
+    const irwin = {
+      ...personB,
+      id: "p-irwin",
+      display_name: "Ben",
+      birth_text: "1940",
+    };
+    const elaine = {
+      ...personA,
+      id: "p-elaine",
+      display_name: "Donna",
+      birth_text: "1950",
+    };
+    const william = {
+      ...personB,
+      id: "p-william",
+      display_name: "Edgar",
+      birth_text: "1950",
+    };
+    // Use ids that put Fiona BEFORE Greg in the default sort, so the
+    // pre-alignment couple bar would put her on the left even though her
+    // parents are on the right.
+    const rebecca = {
+      ...personA,
+      id: "child-a-rebecca",
+      display_name: "Fiona",
+      birth_text: "1971",
+    };
+    const gary = {
+      ...personB,
+      id: "child-b-gary",
+      display_name: "Greg",
+      birth_text: "1971",
+    };
+    const { nodes } = buildLayout({
+      persons: [carol, irwin, elaine, william, rebecca, gary],
+      couple_events: [],
+      relationships: [
+        // Anne + Ben couple
+        makeRel("r1", "p-carol", "p-irwin", "spouse_of"),
+        makeRel("r2", "p-irwin", "p-carol", "spouse_of"),
+        // Donna + Edgar couple
+        makeRel("r3", "p-elaine", "p-william", "spouse_of"),
+        makeRel("r4", "p-william", "p-elaine", "spouse_of"),
+        // Anne + Ben -> Greg
+        makeRel("r5", "p-carol", "child-b-gary", "parent_of"),
+        makeRel("r6", "p-irwin", "child-b-gary", "parent_of"),
+        // Donna + Edgar -> Fiona
+        makeRel("r7", "p-elaine", "child-a-rebecca", "parent_of"),
+        makeRel("r8", "p-william", "child-a-rebecca", "parent_of"),
+        // Fiona + Greg couple
+        makeRel("r9", "child-a-rebecca", "child-b-gary", "spouse_of"),
+        makeRel("r10", "child-b-gary", "child-a-rebecca", "spouse_of"),
+      ],
+    });
+
+    const carolX = findNode(nodes, "p-carol").position.x;
+    const elaineX = findNode(nodes, "p-elaine").position.x;
+    expect(carolX).toBeLessThan(elaineX);
+
+    const rebeccaX = findNode(nodes, "child-a-rebecca").position.x;
+    const garyX = findNode(nodes, "child-b-gary").position.x;
+    // Greg's parents are on the LEFT (Anne + Ben), so Greg should be on
+    // the LEFT in the couple bar after alignment.
+    expect(garyX).toBeLessThan(rebeccaX);
+
+    // Sanity: the couple half-edges still source from each spouse's
+    // outward handle, with the LEFT spouse's right handle and the RIGHT
+    // spouse's left handle pointing at the heart.
+    // (Implicit because we assert positions; no edge-routing assertion
+    // needed here, only that the underlying layout choice is correct.)
+  });
+
+  it("leaves spouse order alone when only one spouse has parents in the data", () => {
+    // Alice has parents on the chart; Bob is a marrying-in spouse with no
+    // recorded parents. The alignment pass has nothing to compare and must
+    // not alter the default id-sorted order.
+    const motherless = {
+      ...personA,
+      id: "p-bob",
+      display_name: "Bob",
+      sex: "male" as const,
+    };
+    const aliceWithParents = {
+      ...personA,
+      id: "p-alice",
+      display_name: "Alice",
+    };
+    const aliceMom = {
+      ...personA,
+      id: "p-mom",
+      display_name: "Mom",
+    };
+    const aliceDad = {
+      ...personB,
+      id: "p-dad",
+      display_name: "Dad",
+    };
+    const { nodes } = buildLayout({
+      persons: [aliceMom, aliceDad, aliceWithParents, motherless],
+      couple_events: [],
+      relationships: [
+        makeRel("r1", "p-mom", "p-dad", "spouse_of"),
+        makeRel("r2", "p-dad", "p-mom", "spouse_of"),
+        makeRel("r3", "p-mom", "p-alice", "parent_of"),
+        makeRel("r4", "p-dad", "p-alice", "parent_of"),
+        makeRel("r5", "p-alice", "p-bob", "spouse_of"),
+        makeRel("r6", "p-bob", "p-alice", "spouse_of"),
+      ],
+    });
+    const aliceX = findNode(nodes, "p-alice").position.x;
+    const bobX = findNode(nodes, "p-bob").position.x;
+    // Default sort keeps "p-alice" < "p-bob", so Alice stays on the left.
+    expect(aliceX).toBeLessThan(bobX);
+  });
 });
