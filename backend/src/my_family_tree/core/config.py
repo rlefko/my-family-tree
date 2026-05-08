@@ -222,6 +222,15 @@ class Settings(BaseSettings):
     llm_vision_model: str = "gpt-4o-mini"
     llm_request_timeout_s: float = 120.0
 
+    # --- Chat -------------------------------------------------------------
+    # Cap on how many image attachments are inlined into the LLM input per
+    # turn. Older or excess attachments fall back to a text reference the
+    # agent can resolve via hybrid_search(document_id=...).
+    chat_max_inline_images: int = 4
+    # Cap on how many prior messages are reloaded from the DB per turn so
+    # very long conversations do not balloon context.
+    chat_history_message_limit: int = 50
+
     # --- OCR ---------------------------------------------------------------
     tesseract_bin: str = "/usr/bin/tesseract"
     vision_fallback_provider: Literal["openai", "anthropic"] = "openai"

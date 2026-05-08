@@ -1,7 +1,9 @@
 /**
  * Tests that ChatStreamProvider's `send` builds the correct wire body when
- * called with attachments: the bracket prefix goes on the wire while the
- * optimistic user turn keeps the original clean text.
+ * called with attachments: the message stays clean (no bracket prefix), the
+ * attachments travel as structured `attachments: [{document_id}]` entries,
+ * and the optimistic user turn carries the attachment refs so the bubble can
+ * render an inline image preview while the server replies.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -76,7 +78,7 @@ describe("ChatStreamProvider.send with attachments", () => {
     vi.clearAllMocks();
   });
 
-  it("prefixes the wire body with bracketed attachment ids while keeping the bubble clean", async () => {
+  it("sends attachments as a structured field and keeps the message clean", async () => {
     const captured: { body?: Record<string, unknown> } = {};
     (postSSE as unknown as ReturnType<typeof vi.fn>).mockImplementation(
       (_path: string, body: Record<string, unknown>) => {
@@ -90,7 +92,6 @@ describe("ChatStreamProvider.send with attachments", () => {
 
     const { router, captured: hookRef } = setupApp();
     render(React.createElement(RouterProvider, { router }));
-    // Allow the initial route render to flush.
     await act(async () => {
       await Promise.resolve();
     });
@@ -100,18 +101,51 @@ describe("ChatStreamProvider.send with attachments", () => {
     await act(async () => {
       await stream.send("hello", [
         { documentId: "doc-1", filename: "scan.pdf" },
-        { documentId: "doc-2", filename: "tree.pdf" },
+        { documentId: "doc-2", filename: "tree.png", mimeType: "image/png", kind: "image" },
       ]);
     });
 
     const body = captured.body;
     if (!body) throw new Error("postSSE was not called");
-    expect(body.message).toBe(
-      "[Attached documents: scan.pdf, tree.pdf | ids: doc-1, doc-2]\n\nhello",
-    );
+    expect(body.message).toBe("hello");
+    expect(body.attachments).toEqual([{ document_id: "doc-1" }, { document_id: "doc-2" }]);
+    // The legacy `history` field is gone; the server reloads from the DB.
+    expect("history" in body).toBe(false);
+
     const updated = hookRef.current;
     if (!updated) throw new Error("ChatStreamProvider lost capture after send");
     const userTurn = updated.turns.find((t) => t.role === "user");
     expect(userTurn?.content).toBe("hello");
+    expect(userTurn?.attachments?.map((a) => a.documentId)).toEqual(["doc-1", "doc-2"]);
+  });
+
+  it("omits attachments from the body when the user sent none", async () => {
+    const captured: { body?: Record<string, unknown> } = {};
+    (postSSE as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      (_path: string, body: Record<string, unknown>) => {
+        captured.body = body;
+        return (async function* () {
+          yield { event: "start", data: { conversation_id: "c-1", agent_run_id: "r-1" } };
+          yield { event: "done", data: { proposal_ids: [] } };
+        })();
+      },
+    );
+
+    const { router, captured: hookRef } = setupApp();
+    render(React.createElement(RouterProvider, { router }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const stream = hookRef.current;
+    if (!stream) throw new Error("ChatStreamProvider did not capture");
+
+    await act(async () => {
+      await stream.send("just text");
+    });
+
+    const body = captured.body;
+    if (!body) throw new Error("postSSE was not called");
+    expect(body.message).toBe("just text");
+    expect(body.attachments).toEqual([]);
   });
 });

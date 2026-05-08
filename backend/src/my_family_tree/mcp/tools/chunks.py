@@ -86,21 +86,32 @@ class HybridSearchOutput(BaseModel):
 @registry.tool(
     name="hybrid_search",
     description=(
-        "Hybrid search over chunks. Fuses vector similarity (if `embedding` "
-        "provided) with Postgres FTS via Reciprocal Rank Fusion. Optionally "
-        "scope to a single `document_id`."
+        "Hybrid search over chunks. Pass the user's natural-language `query`. "
+        "When the host has an embeddings client configured, the query is "
+        "embedded server-side and the results fuse vector similarity with "
+        "Postgres FTS via Reciprocal Rank Fusion; otherwise this is FTS-only. "
+        "Optionally scope to a single `document_id`. You usually do NOT need "
+        "to compute or pass `embedding` yourself."
     ),
     input_model=HybridSearchInput,
     output_model=HybridSearchOutput,
     capability=Capability.READ,
 )
 async def hybrid_search(ctx: ToolContext, payload: HybridSearchInput) -> HybridSearchOutput:
+    embedding = payload.embedding
+    if embedding is None and ctx.embeddings is not None:
+        # Embed the query server-side so the agent gets vector recall without
+        # having to compute a 3072-dim vector itself. Falls back to FTS-only
+        # when no embeddings client is configured.
+        embedded = await ctx.embeddings.embed([payload.query])
+        if embedded:
+            embedding = embedded[0]
     async with session_scope(ctx.session_factory) as session:
         hits = await retrieve_hybrid_search(
             session,
             tree_id=ctx.tree_id,
             query=payload.query,
-            embedding=payload.embedding,
+            embedding=embedding,
             k=payload.k,
             k_rrf=payload.k_rrf,
             document_id=payload.document_id,
