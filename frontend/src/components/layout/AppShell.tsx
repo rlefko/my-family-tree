@@ -13,6 +13,7 @@ import {
 import type { ReactNode } from "react";
 
 import { useHealth } from "@/api/endpoints/health";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useChatStream } from "@/features/chat/ChatStreamProvider";
 import { env } from "@/lib/env";
@@ -37,8 +38,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   const chat = useChatStream();
   return (
     <div className="flex h-full">
-      <aside className="flex w-56 flex-col border-r border-zinc-200 bg-white">
-        <div className="px-4 py-4 text-lg font-semibold">{env.VITE_APP_NAME}</div>
+      <aside className="flex w-56 flex-col border-r border-border bg-card">
+        <div className="flex items-center justify-between gap-2 px-4 py-4">
+          <span className="text-lg font-semibold text-foreground">{env.VITE_APP_NAME}</span>
+          <ThemeToggle />
+        </div>
         <nav className="flex-1 space-y-0.5 px-2">
           {NAV.map((item) => {
             const Icon = item.icon;
@@ -48,16 +52,16 @@ export function AppShell({ children }: { children: ReactNode }) {
                 key={item.to}
                 to={item.to}
                 className={cn(
-                  "flex items-center gap-2 rounded px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-100",
+                  "flex items-center gap-2 rounded px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground",
                 )}
-                activeProps={{ className: "bg-zinc-100 font-medium text-zinc-900" }}
+                activeProps={{ className: "bg-muted font-medium text-foreground" }}
               >
                 <Icon className="h-4 w-4" />
                 <span className="flex-1">{item.label}</span>
                 {isChat && chat.busy ? (
                   <Tooltip content="Agent is working, click to view">
                     <span
-                      className="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700"
+                      className="inline-flex items-center gap-1 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary"
                       aria-label="Agent working"
                     >
                       <Loader2 className="h-2.5 w-2.5 animate-spin" />
@@ -68,7 +72,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                     content={`${chat.unseenCount} new chat result${chat.unseenCount === 1 ? "" : "s"}`}
                   >
                     <span
-                      className="inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-indigo-600 px-1 text-[10px] font-semibold text-white"
+                      className="inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground"
                       aria-label={`${chat.unseenCount} new chat results`}
                     >
                       {chat.unseenCount}
@@ -79,7 +83,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             );
           })}
         </nav>
-        <div className="border-t border-zinc-200 px-4 py-3 text-xs text-zinc-500">
+        <div className="border-t border-border px-4 py-3 text-xs text-muted-foreground">
           {health.data ? (
             <>
               <div>db: {health.data.db}</div>
