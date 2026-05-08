@@ -41,6 +41,7 @@ from my_family_tree.models.conversation import Conversation
 from my_family_tree.models.document import Document
 from my_family_tree.models.enums import AgentRole, DocumentKind, MessageRole, RunStatus
 from my_family_tree.models.message import Message
+from my_family_tree.models.proposal import Proposal
 from my_family_tree.models.tree import Tree
 
 DEFAULT_TREE_NAME = "My Family Tree"
@@ -447,6 +448,128 @@ def _assistant_messages_from_content(
     return out
 
 
+@dataclass(slots=True, frozen=True)
+class _ProposalRow:
+    """Slim view of a `Proposal` used to render the [Session state] block."""
+
+    proposal_id: UUID
+    action: str
+    target_type: str | None
+    payload: dict[str, Any]
+    status: str
+    target_id: UUID | None
+
+
+_SESSION_STATE_HEADER = (
+    "[Session state] Proposals created in this conversation. Treat "
+    "status=approved as canonical: do NOT re-propose the same person, "
+    "relationship, event, place, or source, and you may reference its "
+    "target_id directly. Treat status=pending as already queued: do not "
+    "duplicate it. Treat status=rejected as a decision not to retry "
+    "unless the user asks explicitly. status=expired is stale. This "
+    "block is out-of-band like [Attached: ...]; do not echo it back."
+)
+
+
+def _proposal_subject(action: str, target_type: str | None, payload: dict[str, Any]) -> str:
+    """One-line summary of a proposal's payload, dispatched on
+    `(action, target_type)`. Falls back to a truncated JSON dump for
+    combinations the formatter does not know about so unknown shapes never
+    raise."""
+    key = (action, target_type or "")
+    if key == ("create", "person"):
+        return str(payload.get("display_name") or "(unnamed person)")
+    if key == ("update", "person"):
+        keys = sorted(k for k in payload if k != "person_id")
+        return f"update fields: {', '.join(keys)}" if keys else "update"
+    if key == ("merge", "person"):
+        return (
+            f"merge loser {payload.get('loser_id')} into winner "
+            f"{payload.get('winner_id')}"
+        )
+    if key == ("create", "relationship"):
+        rel_type = payload.get("type") or "relationship"
+        return f"{rel_type}: {payload.get('subject_id')} -> {payload.get('object_id')}"
+    if key == ("delete", "relationship"):
+        return f"delete relationship {payload.get('relationship_id')}"
+    if key == ("create", "event"):
+        ev_type = payload.get("type") or "event"
+        date_text = payload.get("date_text") or ""
+        return f"{ev_type} {date_text}".strip()
+    if key == ("update", "event"):
+        keys = sorted(k for k in payload if k != "event_id")
+        return f"update fields: {', '.join(keys)}" if keys else "update"
+    if key == ("create", "place"):
+        return str(payload.get("name") or "(unnamed place)")
+    if key == ("create", ""):
+        return str(payload.get("title") or payload.get("kind") or "source")
+    if key == ("accept_claim", ""):
+        return f"accept claim {payload.get('claim_id')}"
+    if key == ("reject_claim", ""):
+        return f"reject claim {payload.get('claim_id')}"
+    if key == ("resolve_conflict", ""):
+        return f"resolve conflict {payload.get('conflict_id')}"
+    return json.dumps(payload, sort_keys=True, default=str)[:80]
+
+
+def _format_session_state(rows: list[_ProposalRow]) -> str:
+    """Render proposal rows into the body of the [Session state] user
+    message. Returns '' for an empty list so the caller can skip the
+    injection entirely instead of feeding the model an empty header."""
+    if not rows:
+        return ""
+    lines: list[str] = [_SESSION_STATE_HEADER]
+    for row in rows:
+        subject = _proposal_subject(row.action, row.target_type, row.payload)
+        target_str = (
+            f" -> {row.target_type or 'target'} {row.target_id}"
+            if row.target_id is not None
+            else ""
+        )
+        target_type_str = row.target_type or "-"
+        lines.append(
+            f"- proposal {row.proposal_id} | {row.action} {target_type_str} | "
+            f"{subject} | status={row.status}{target_str}"
+        )
+    return "\n".join(lines)
+
+
+async def _proposal_rows_for_conversation(
+    request: Request,
+    conversation_id: UUID,
+) -> list[_ProposalRow]:
+    """Load proposals attached to any `AgentRun` belonging to this
+    conversation, in the order they were created. Status and target_id are
+    read fresh per turn so an inline approval is reflected immediately."""
+    session_factory = request.app.state.session_factory
+    async with session_scope(session_factory) as session:
+        stmt = (
+            select(
+                Proposal.id,
+                Proposal.action,
+                Proposal.target_type,
+                Proposal.payload_json,
+                Proposal.status,
+                Proposal.target_id,
+            )
+            .join(AgentRun, Proposal.agent_run_id == AgentRun.id)
+            .where(AgentRun.conversation_id == conversation_id)
+            .order_by(Proposal.created_at)
+        )
+        rows = (await session.execute(stmt)).all()
+    return [
+        _ProposalRow(
+            proposal_id=r[0],
+            action=r[1].value,
+            target_type=r[2].value if r[2] is not None else None,
+            payload=r[3] or {},
+            status=r[4].value,
+            target_id=r[5],
+        )
+        for r in rows
+    ]
+
+
 async def _history_messages(
     request: Request,
     conversation_id: UUID,
@@ -529,7 +652,23 @@ async def _build_messages(
     if not current_blocks:
         current_blocks = [TextBlock(type="text", text=req.message)]
 
+    proposal_rows = await _proposal_rows_for_conversation(request, conversation_id)
+    session_state_text = _format_session_state(proposal_rows)
+
     messages = list(history)
+    if session_state_text:
+        log.info(
+            "chat.session_state",
+            conversation_id=str(conversation_id),
+            proposal_count=len(proposal_rows),
+            bytes=len(session_state_text),
+        )
+        messages.append(
+            LLMMessage(
+                role="user",
+                content=[TextBlock(type="text", text=session_state_text)],
+            )
+        )
     messages.append(LLMMessage(role="user", content=current_blocks))
     return messages, current_resolved
 
