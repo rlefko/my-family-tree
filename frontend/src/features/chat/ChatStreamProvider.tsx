@@ -119,9 +119,7 @@ function turnsFromMessages(messages: MessageRow[]): ChatTurn[] {
         if (block.type === "text") {
           turn.content += block.text;
         } else if (block.type === "tool_use") {
-          // Persisted messages carry tools but not thinking (raw reasoning
-          // is never persisted), so rehydrated traces only contain tool
-          // entries. Order is preserved from `content_json`.
+          // Raw thinking is never persisted; rehydrated traces only carry tools.
           turn.trace = [
             ...(turn.trace ?? []),
             {
@@ -403,9 +401,6 @@ export function applyEvent(turn: ChatTurn, type: string, data: SseEventData): Ch
       const text = String(data?.text ?? "");
       const trace = turn.trace ?? [];
       const last = trace[trace.length - 1];
-      // Append to the active thinking entry until a tool call (or other
-      // non-thinking event) interrupts it; afterward, a fresh thinking
-      // entry is opened so the bubble shows reasoning bursts in place.
       if (last?.kind === "thinking") {
         const next = trace.slice(0, -1);
         next.push({ ...last, text: last.text + text });
