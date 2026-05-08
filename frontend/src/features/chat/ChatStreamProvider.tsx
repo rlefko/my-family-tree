@@ -45,7 +45,7 @@ export type ToolCall = {
   subagentSummary?: string;
 };
 
-export type ThinkingEntry = { kind: "thinking"; id: string; text: string };
+export type ThinkingEntry = { kind: "thinking"; id: string; text: string; sealed?: boolean };
 export type ToolEntry = { kind: "tool" } & ToolCall;
 export type TraceEntry = ThinkingEntry | ToolEntry;
 
@@ -184,7 +184,7 @@ function applySubagentEvent(parent: ToolEntry, inner: Record<string, unknown>): 
     const text = typeof inner.text === "string" ? inner.text : "";
     if (!text) return parent;
     const last = trace[trace.length - 1];
-    if (last?.kind === "thinking") {
+    if (last?.kind === "thinking" && !last.sealed) {
       const next = trace.slice(0, -1);
       next.push({ ...last, text: last.text + text });
       return { ...parent, subagentTrace: next };
@@ -193,6 +193,13 @@ function applySubagentEvent(parent: ToolEntry, inner: Record<string, unknown>): 
       ...parent,
       subagentTrace: [...trace, { kind: "thinking", id: crypto.randomUUID(), text }],
     };
+  }
+  if (innerType === "thinking_break") {
+    const last = trace[trace.length - 1];
+    if (!last || last.kind !== "thinking" || last.sealed) return parent;
+    const next = trace.slice(0, -1);
+    next.push({ ...last, sealed: true });
+    return { ...parent, subagentTrace: next };
   }
   if (innerType === "tool_use_started") {
     const id = typeof inner.id === "string" ? inner.id : crypto.randomUUID();
@@ -559,7 +566,7 @@ export function applyEvent(turn: ChatTurn, type: string, data: SseEventData): Ch
       const text = String(data?.text ?? "");
       const trace = turn.trace ?? [];
       const last = trace[trace.length - 1];
-      if (last?.kind === "thinking") {
+      if (last?.kind === "thinking" && !last.sealed) {
         const next = trace.slice(0, -1);
         next.push({ ...last, text: last.text + text });
         return { ...turn, trace: next };
@@ -568,6 +575,18 @@ export function applyEvent(turn: ChatTurn, type: string, data: SseEventData): Ch
         ...turn,
         trace: [...trace, { kind: "thinking", id: crypto.randomUUID(), text }],
       };
+    }
+    case "thinking_break": {
+      // Boundary between two reasoning summary parts. Seal the current
+      // thinking entry so the next thinking_delta opens a fresh block, but
+      // never push an entry of our own; an empty placeholder would render
+      // as a stray "Thinking..." pill on the wire.
+      const trace = turn.trace ?? [];
+      const last = trace[trace.length - 1];
+      if (!last || last.kind !== "thinking" || last.sealed) return turn;
+      const next = trace.slice(0, -1);
+      next.push({ ...last, sealed: true });
+      return { ...turn, trace: next };
     }
     case "tool_use_started": {
       const id = String(data?.id ?? "");

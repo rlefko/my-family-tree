@@ -68,6 +68,7 @@ class ChatTurnEvent:
     type: Literal[
         "text_delta",
         "thinking_delta",
+        "thinking_break",
         "tool_use_started",
         "tool_use_finished",
         "tool_result",
@@ -323,6 +324,8 @@ class ChatAgent:
             yield ChatTurnEvent(type="text_delta", payload={"text": event.text or ""})
         elif event.type == "thinking_delta":
             yield ChatTurnEvent(type="thinking_delta", payload={"text": event.text or ""})
+        elif event.type == "thinking_break":
+            yield ChatTurnEvent(type="thinking_break")
         elif event.type == "tool_use_started":
             yield ChatTurnEvent(
                 type="tool_use_started",
