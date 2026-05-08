@@ -25,9 +25,7 @@ if (!root) throw new Error("missing #root element");
 
 function ThemedToaster() {
   const { resolvedTheme } = useTheme();
-  return (
-    <Toaster position="bottom-right" richColors closeButton theme={resolvedTheme} />
-  );
+  return <Toaster position="bottom-right" richColors closeButton theme={resolvedTheme} />;
 }
 
 ReactDOM.createRoot(root).render(

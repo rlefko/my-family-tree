@@ -929,7 +929,9 @@ function DocumentsPanel({
         >
           <div className="min-w-0 flex-1">
             <div className="truncate font-medium text-foreground">{d.title ?? "(untitled)"}</div>
-            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{d.kind}</div>
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              {d.kind}
+            </div>
             {d.citation ? <div className="mt-0.5 text-muted-foreground">{d.citation}</div> : null}
           </div>
           <Tooltip

@@ -197,9 +197,7 @@ export const UploadDropzone = forwardRef<UploadDropzoneHandle, Props>(function U
               key={it.id}
               className={cn(
                 "rounded-md border bg-card px-3 py-2 text-card-foreground shadow",
-                it.status === "failed"
-                  ? "border-destructive/40"
-                  : "border-border",
+                it.status === "failed" ? "border-destructive/40" : "border-border",
               )}
             >
               <div className="flex items-center justify-between gap-2">
@@ -236,7 +234,9 @@ export const UploadDropzone = forwardRef<UploadDropzoneHandle, Props>(function U
 function UploadStatusLine({ item }: { item: UploadingItem }) {
   if (item.status === "uploading") {
     return (
-      <p className="mt-1 text-xs text-muted-foreground">Uploading {Math.round(item.progress * 100)}%</p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Uploading {Math.round(item.progress * 100)}%
+      </p>
     );
   }
   if (item.status === "processing") {

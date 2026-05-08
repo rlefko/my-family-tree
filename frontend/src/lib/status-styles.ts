@@ -63,12 +63,9 @@ export const STATUS_BADGE_OUTLINE: Record<string, string> = {
  * border and a different neutral baseline.
  */
 export const PROPOSAL_ROW_TONE: Record<string, string> = {
-  pending:
-    "bg-card border border-border text-foreground dark:bg-card",
+  pending: "bg-card border border-border text-foreground dark:bg-card",
   approved:
     "bg-emerald-50 border border-emerald-200 text-emerald-900 dark:bg-emerald-950/40 dark:border-emerald-900 dark:text-emerald-200",
-  rejected:
-    "bg-muted border border-border text-muted-foreground line-through",
-  expired:
-    "bg-muted border border-border text-muted-foreground",
+  rejected: "bg-muted border border-border text-muted-foreground line-through",
+  expired: "bg-muted border border-border text-muted-foreground",
 };
