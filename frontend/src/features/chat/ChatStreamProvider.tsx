@@ -53,6 +53,12 @@ export function traceSummary(trace: TraceEntry[]): string {
   return `Reasoned and used ${toolCount} tool${toolCount === 1 ? "" : "s"}`;
 }
 
+export type NeedsInputPrompt = {
+  question: string;
+  options?: string[] | null;
+  schemaHint?: string | null;
+};
+
 export type ChatTurn = {
   id: string;
   role: "user" | "assistant";
@@ -62,6 +68,7 @@ export type ChatTurn = {
   trace?: TraceEntry[];
   proposalIds?: string[];
   attachments?: ChatAttachmentRef[];
+  needsInput?: NeedsInputPrompt;
 };
 
 const STORAGE_KEY = "mft.activeConversation";
@@ -137,6 +144,12 @@ function turnsFromMessages(messages: MessageRow[]): ChatTurn[] {
               output: block.output,
             },
           ];
+          if (block.name === "request_user_input" && !block.is_error) {
+            const lifted = liftNeedsInput(block.input, block.output);
+            if (lifted !== null) {
+              turn.needsInput = lifted;
+            }
+          }
         } else if (block.type === "proposals_summary") {
           turn.proposalIds = [...(turn.proposalIds ?? []), ...block.proposal_ids];
         }
@@ -144,7 +157,52 @@ function turnsFromMessages(messages: MessageRow[]): ChatTurn[] {
       turns.push(turn);
     }
   }
-  return turns;
+  // Only the most recent assistant turn keeps `needsInput` active; older turns
+  // had their question already answered, so clear them so the UI stops
+  // rendering stale prompt cards on every replay.
+  let lastAssistantWithNeed: number | null = null;
+  for (let i = turns.length - 1; i >= 0; i--) {
+    if (turns[i].role === "assistant" && turns[i].needsInput) {
+      lastAssistantWithNeed = i;
+      break;
+    }
+  }
+  return turns.map((t, i) => {
+    if (t.needsInput && i !== lastAssistantWithNeed) {
+      return { ...t, needsInput: undefined };
+    }
+    return t;
+  });
+}
+
+function liftNeedsInput(input: unknown, output: unknown): NeedsInputPrompt | null {
+  // Prefer the persisted output (echo of the parsed input) but fall back to
+  // the raw input so old persisted rows from before the echo change still
+  // render a prompt card on rehydration.
+  const sources: unknown[] = [output, input];
+  for (const candidate of sources) {
+    if (candidate === null || typeof candidate !== "object") continue;
+    const obj = candidate as Record<string, unknown>;
+    const question =
+      typeof obj.question === "string" && obj.question
+        ? obj.question
+        : typeof obj.reason === "string" && obj.reason
+          ? obj.reason
+          : null;
+    if (question === null) continue;
+    const optionsRaw = obj.options;
+    const options = Array.isArray(optionsRaw)
+      ? optionsRaw.filter((v): v is string => typeof v === "string")
+      : null;
+    const schemaHintRaw = obj.schema_hint;
+    const schemaHint = typeof schemaHintRaw === "string" ? schemaHintRaw : null;
+    return {
+      question,
+      options: options && options.length > 0 ? options : null,
+      schemaHint,
+    };
+  }
+  return null;
 }
 
 export type ChatAttachmentRef = {
@@ -448,6 +506,24 @@ export function applyEvent(turn: ChatTurn, type: string, data: SseEventData): Ch
               }
             : e,
         ),
+      };
+    }
+    case "needs_input": {
+      const question = String((data as { question?: string })?.question ?? "");
+      if (!question) return turn;
+      const optionsRaw = (data as { options?: unknown })?.options;
+      const options = Array.isArray(optionsRaw)
+        ? optionsRaw.filter((v): v is string => typeof v === "string")
+        : null;
+      const schemaHintRaw = (data as { schema_hint?: unknown })?.schema_hint;
+      const schemaHint = typeof schemaHintRaw === "string" ? schemaHintRaw : null;
+      return {
+        ...turn,
+        needsInput: {
+          question,
+          options: options && options.length > 0 ? options : null,
+          schemaHint,
+        },
       };
     }
     case "done": {

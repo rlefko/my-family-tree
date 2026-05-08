@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import {
   Brain,
   ChevronDown,
+  HelpCircle,
   Loader2,
   MessageSquarePlus,
   Paperclip,
@@ -23,6 +24,7 @@ import {
   useChatStream,
   type ChatAttachmentRef,
   type ChatTurn,
+  type NeedsInputPrompt,
   type ThinkingEntry,
   type ToolEntry,
   type TraceEntry,
@@ -175,17 +177,7 @@ function ChatPage() {
             <EmptyState />
           ) : (
             <ul className="mx-auto flex max-w-3xl flex-col gap-4">
-              {turns.map((turn) => (
-                <li
-                  key={turn.id}
-                  className={cn(
-                    "flex w-full",
-                    turn.role === "user" ? "justify-end" : "justify-start",
-                  )}
-                >
-                  <Bubble turn={turn} />
-                </li>
-              ))}
+              <ChatTurns turns={turns} />
             </ul>
           )}
         </div>
@@ -321,7 +313,35 @@ function ConversationSidebar({
   );
 }
 
-function Bubble({ turn }: { turn: ChatTurn }) {
+function ChatTurns({ turns }: { turns: ChatTurn[] }) {
+  // Compute the index of the most recent assistant turn once so the prompt
+  // card only renders on it, not on stale earlier turns whose questions were
+  // already answered.
+  let latestAssistantIndex = -1;
+  for (let i = turns.length - 1; i >= 0; i--) {
+    if (turns[i].role === "assistant") {
+      latestAssistantIndex = i;
+      break;
+    }
+  }
+  return (
+    <>
+      {turns.map((turn, idx) => (
+        <li
+          key={turn.id}
+          className={cn(
+            "flex w-full",
+            turn.role === "user" ? "justify-end" : "justify-start",
+          )}
+        >
+          <Bubble turn={turn} isLatestAssistant={idx === latestAssistantIndex} />
+        </li>
+      ))}
+    </>
+  );
+}
+
+function Bubble({ turn, isLatestAssistant }: { turn: ChatTurn; isLatestAssistant: boolean }) {
   const isUser = turn.role === "user";
   const trace = turn.trace ?? [];
   const proposalIds = turn.proposalIds ?? [];
@@ -333,6 +353,7 @@ function Bubble({ turn }: { turn: ChatTurn }) {
     (e): e is ToolEntry => e.kind === "tool" && e.status === "running",
   );
   const live = Boolean(turn.pending);
+  const showPrompt = !isUser && isLatestAssistant && Boolean(turn.needsInput) && !turn.pending;
   return (
     <div
       className={cn(
@@ -368,7 +389,53 @@ function Bubble({ turn }: { turn: ChatTurn }) {
       {!isUser && turn.pending && !isQuiet ? (
         <BusyFooter runningToolName={runningTool?.name ?? null} isStreamingText={hasContent} />
       ) : null}
+      {showPrompt && turn.needsInput ? <UserInputPrompt prompt={turn.needsInput} /> : null}
       {!isUser && proposalIds.length > 0 ? <InlineProposals ids={proposalIds} /> : null}
+    </div>
+  );
+}
+
+function UserInputPrompt({ prompt }: { prompt: NeedsInputPrompt }) {
+  const { send, busy } = useChatStream();
+  const options = prompt.options ?? [];
+  const submit = (text: string) => {
+    if (busy || !text.trim()) return;
+    void send(text);
+  };
+  return (
+    <div className="mt-3 rounded-md border border-amber-200 bg-amber-50/70 p-2.5 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide">
+        <HelpCircle className="h-3 w-3" />
+        Question for you
+      </div>
+      <Markdown content={prompt.question} />
+      {options.length > 0 ? (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {options.map((opt) => (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => submit(opt)}
+              disabled={busy}
+              className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-100/80 px-2 py-1 text-xs font-medium text-amber-900 hover:bg-amber-200 disabled:opacity-60 dark:border-amber-800 dark:bg-amber-900/40 dark:text-amber-100 dark:hover:bg-amber-900/60"
+            >
+              {opt}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => submit("(no answer)")}
+            disabled={busy}
+            className="inline-flex items-center gap-1 rounded-md border border-input bg-background px-2 py-1 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-60"
+          >
+            Skip
+          </button>
+        </div>
+      ) : (
+        <div className="mt-2 text-[11px] text-amber-800/80 dark:text-amber-200/80">
+          Type your reply in the chat box below.
+        </div>
+      )}
     </div>
   );
 }
