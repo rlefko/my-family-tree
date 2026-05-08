@@ -79,15 +79,18 @@ function couplesKey(a: string, b: string): string {
   return a < b ? `${a}|${b}` : `${b}|${a}`;
 }
 
+function makeUnion(a: string, b: string): Union {
+  const [first, second] = a < b ? [a, b] : [b, a];
+  return { id: `union:${first}|${second}`, a: first, b: second };
+}
+
 function collectCouples(rels: RelationshipRow[]): Map<string, Union> {
   const couples = new Map<string, Union>();
   for (const r of rels) {
     if (!COUPLE_TYPES.has(r.type)) continue;
     const key = couplesKey(r.subject_id, r.object_id);
     if (couples.has(key)) continue;
-    const ids = [r.subject_id, r.object_id];
-    ids.sort();
-    couples.set(key, { id: `union:${key}`, a: ids[0], b: ids[1] });
+    couples.set(key, makeUnion(r.subject_id, r.object_id));
   }
   return couples;
 }
@@ -179,23 +182,44 @@ function inferCouplesFromSharedChildren(
         const b = parentList[j];
         const key = couplesKey(a, b);
         if (out.has(key)) continue;
-        const ids = [a, b];
-        ids.sort();
-        out.set(key, { id: `union:${key}`, a: ids[0], b: ids[1] });
+        out.set(key, makeUnion(a, b));
       }
     }
   }
   return out;
 }
 
+const YEAR_REGEX = /\b(1[0-9]{3}|2[0-9]{3})\b/;
+
 /**
- * Pull a 4-digit year out of a free-form birth_text. Returns null when no
- * year is detectable. Used to sort siblings oldest-left.
+ * Pull a 4-digit year out of free-form text (a birth_text or marriage date).
+ * Returns null when no year is detectable.
  */
-function parseBirthYear(person: PersonNode): number | null {
-  if (!person.birth_text) return null;
-  const m = person.birth_text.match(/\b(1[0-9]{3}|2[0-9]{3})\b/);
+function parseYear(text: string | null | undefined): number | null {
+  if (!text) return null;
+  const m = text.match(YEAR_REGEX);
   return m ? Number.parseInt(m[1], 10) : null;
+}
+
+function parseBirthYear(person: PersonNode): number | null {
+  return parseYear(person.birth_text);
+}
+
+/**
+ * Year-then-name comparator for sibling and root ordering. Persons with no
+ * parsable birth year sink below dated persons but stay clustered
+ * alphabetically.
+ */
+function compareSiblingPersons(
+  a: PersonNode | undefined,
+  b: PersonNode | undefined,
+): number {
+  const ya = a ? parseBirthYear(a) : null;
+  const yb = b ? parseBirthYear(b) : null;
+  if (ya !== null && yb !== null && ya !== yb) return ya - yb;
+  if (ya !== null && yb === null) return -1;
+  if (ya === null && yb !== null) return 1;
+  return (a?.display_name ?? "").localeCompare(b?.display_name ?? "");
 }
 
 /**
@@ -279,8 +303,7 @@ function pickPrimaryUnions(
       yearOfUnion.set(u.id, null);
       continue;
     }
-    const m = date.match(/\b(1[0-9]{3}|2[0-9]{3})\b/);
-    yearOfUnion.set(u.id, m ? Number.parseInt(m[1], 10) : null);
+    yearOfUnion.set(u.id, parseYear(date));
   }
 
   const unionsOf = new Map<string, string[]>();
@@ -405,10 +428,6 @@ function buildFamilyUnits(
   return { units, unitOfPerson };
 }
 
-/**
- * Sort each unit's children oldest-left. Persons with no parsable birth year
- * sink below dated siblings but stay clustered alphabetically.
- */
 function orderSiblings(
   units: Map<string, FamilyUnit>,
   personById: Map<string, PersonNode>,
@@ -418,16 +437,10 @@ function orderSiblings(
       const ua = units.get(a);
       const ub = units.get(b);
       if (!ua || !ub) return 0;
-      const pa = personById.get(ua.spouses[0]);
-      const pb = personById.get(ub.spouses[0]);
-      const ya = pa ? parseBirthYear(pa) : null;
-      const yb = pb ? parseBirthYear(pb) : null;
-      if (ya !== null && yb !== null && ya !== yb) return ya - yb;
-      if (ya !== null && yb === null) return -1;
-      if (ya === null && yb !== null) return 1;
-      const na = pa?.display_name ?? "";
-      const nb = pb?.display_name ?? "";
-      return na.localeCompare(nb);
+      return compareSiblingPersons(
+        personById.get(ua.spouses[0]),
+        personById.get(ub.spouses[0]),
+      );
     });
   }
 }
@@ -478,14 +491,10 @@ function assignCoordinates(
     const ga = ua?.generation ?? 0;
     const gb = ub?.generation ?? 0;
     if (ga !== gb) return ga - gb;
-    const pa = personById.get(ua?.spouses[0] ?? "");
-    const pb = personById.get(ub?.spouses[0] ?? "");
-    const ya = pa ? parseBirthYear(pa) : null;
-    const yb = pb ? parseBirthYear(pb) : null;
-    if (ya !== null && yb !== null && ya !== yb) return ya - yb;
-    if (ya !== null && yb === null) return -1;
-    if (ya === null && yb !== null) return 1;
-    return (pa?.display_name ?? "").localeCompare(pb?.display_name ?? "");
+    return compareSiblingPersons(
+      personById.get(ua?.spouses[0] ?? ""),
+      personById.get(ub?.spouses[0] ?? ""),
+    );
   });
   const seen = new Set<string>();
   for (const id of rootIds) computeWidth(id, seen);
