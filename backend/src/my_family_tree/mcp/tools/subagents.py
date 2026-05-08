@@ -10,7 +10,6 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from my_family_tree.agent.traversal_subagent import TraversalSubagentResult
-from my_family_tree.core.errors import LLMProviderError
 from my_family_tree.mcp.host import ToolContext
 from my_family_tree.mcp.registry import Capability, get_registry
 
@@ -45,7 +44,7 @@ async def traverse_and_summarize(
 ) -> TraversalSubagentResult:
     runner = ctx.subagent_runner
     if runner is None:
-        raise LLMProviderError(
+        raise RuntimeError(
             "traverse_and_summarize requires a configured subagent runner; "
             "the chat router wires this up automatically. If you are seeing "
             "this from a test, construct a ToolContext with a runner."
