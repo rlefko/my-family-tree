@@ -9,9 +9,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyEvent,
+  traceSummary,
   type ChatTurn,
   type ThinkingEntry,
   type ToolEntry,
+  type TraceEntry,
 } from "@/features/chat/ChatStreamProvider";
 
 function emptyTurn(): ChatTurn {
@@ -108,5 +110,33 @@ describe("applyEvent trace ordering", () => {
     const turn = feed(emptyTurn(), [{ type: "done", data: { proposal_ids: ["pp-1", "pp-2"] } }]);
     expect(turn.pending).toBe(false);
     expect(turn.proposalIds).toEqual(["pp-1", "pp-2"]);
+  });
+});
+
+const thinking = (text: string): TraceEntry => ({ kind: "thinking", id: "t", text });
+const tool = (id: string, name = "tool_x"): TraceEntry => ({
+  kind: "tool",
+  id,
+  name,
+  status: "ok",
+});
+
+describe("traceSummary", () => {
+  it("returns the reasoning-only label when no tools were called", () => {
+    expect(traceSummary([thinking("plan")])).toBe("Reasoning summary");
+  });
+
+  it("uses singular tool wording for exactly one tool call", () => {
+    expect(traceSummary([thinking("plan"), tool("a")])).toBe("Reasoned and used 1 tool");
+  });
+
+  it("pluralizes when multiple tool calls were made", () => {
+    expect(traceSummary([thinking("plan"), tool("a"), thinking("review"), tool("b")])).toBe(
+      "Reasoned and used 2 tools",
+    );
+  });
+
+  it("falls back to the reasoning-only label on an empty trace", () => {
+    expect(traceSummary([])).toBe("Reasoning summary");
   });
 });
