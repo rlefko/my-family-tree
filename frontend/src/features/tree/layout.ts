@@ -51,13 +51,13 @@ export const NODE_HEIGHT = 84;
 export const UNION_WIDTH = 30;
 export const UNION_HEIGHT = 30;
 export const NODESEP = 36;
-export const RANKSEP = 80;
-export const ROOT_GAP = NODESEP * 3;
+const RANKSEP = 80;
+const ROOT_GAP = NODESEP * 3;
 
 const COUPLE_TYPES = new Set(["spouse_of", "partner_of"]);
 const SIBLING_TYPE = "sibling_of";
 
-export type Union = { id: string; a: string; b: string };
+type Union = { id: string; a: string; b: string };
 
 type FamilyUnit = {
   id: string;
@@ -70,16 +70,16 @@ type FamilyUnit = {
 
 type Point = { x: number; y: number };
 
-export type LayoutOpts = {
+type LayoutOpts = {
   onSelect?: (id: string) => void;
   selectedId?: string | null;
 };
 
-export function couplesKey(a: string, b: string): string {
+function couplesKey(a: string, b: string): string {
   return a < b ? `${a}|${b}` : `${b}|${a}`;
 }
 
-export function collectCouples(rels: RelationshipRow[]): Map<string, Union> {
+function collectCouples(rels: RelationshipRow[]): Map<string, Union> {
   const couples = new Map<string, Union>();
   for (const r of rels) {
     if (!COUPLE_TYPES.has(r.type)) continue;
@@ -92,7 +92,7 @@ export function collectCouples(rels: RelationshipRow[]): Map<string, Union> {
   return couples;
 }
 
-export function collectParentsByChild(rels: RelationshipRow[]): Map<string, string[]> {
+function collectParentsByChild(rels: RelationshipRow[]): Map<string, string[]> {
   const out = new Map<string, string[]>();
   for (const r of rels) {
     if (r.type !== "parent_of") continue;
@@ -110,7 +110,7 @@ export function collectParentsByChild(rels: RelationshipRow[]): Map<string, stri
  * siblings on the same generation instead of leaving the parentless ones
  * floating at the top of the chart.
  */
-export function inferSiblingParents(
+function inferSiblingParents(
   parents: Map<string, string[]>,
   rels: RelationshipRow[],
 ): Map<string, string[]> {
@@ -166,7 +166,7 @@ export function inferSiblingParents(
  * joiner) even when no explicit spouse_of / partner_of edge exists. Keeps
  * the chart visually cohesive when only parent edges were recorded.
  */
-export function inferCouplesFromSharedChildren(
+function inferCouplesFromSharedChildren(
   couples: Map<string, Union>,
   parents: Map<string, string[]>,
 ): Map<string, Union> {
@@ -192,7 +192,7 @@ export function inferCouplesFromSharedChildren(
  * Pull a 4-digit year out of a free-form birth_text. Returns null when no
  * year is detectable. Used to sort siblings oldest-left.
  */
-export function parseBirthYear(person: PersonNode): number | null {
+function parseBirthYear(person: PersonNode): number | null {
   if (!person.birth_text) return null;
   const m = person.birth_text.match(/\b(1[0-9]{3}|2[0-9]{3})\b/);
   return m ? Number.parseInt(m[1], 10) : null;
@@ -204,7 +204,7 @@ export function parseBirthYear(person: PersonNode): number | null {
  * so cousins-of-cousins still align. After each relaxation, lift the
  * shallower member of every couple so spouses share a row.
  */
-export function assignGenerations(
+function assignGenerations(
   persons: PersonNode[],
   parents: Map<string, string[]>,
   couples: Map<string, Union>,
@@ -323,7 +323,7 @@ function pickPrimaryUnions(
  * this union as primary do not get a couple unit; their heart is dropped at
  * the midpoint between the two solo cards by `placeOrphanUnions`.
  */
-export function buildFamilyUnits(
+function buildFamilyUnits(
   persons: PersonNode[],
   parents: Map<string, string[]>,
   couples: Map<string, Union>,
@@ -409,7 +409,7 @@ export function buildFamilyUnits(
  * Sort each unit's children oldest-left. Persons with no parsable birth year
  * sink below dated siblings but stay clustered alphabetically.
  */
-export function orderSiblings(
+function orderSiblings(
   units: Map<string, FamilyUnit>,
   personById: Map<string, PersonNode>,
 ): void {
@@ -444,7 +444,7 @@ function unitBarWidth(unit: FamilyUnit): number {
  * generation. Returns absolute positions (top-left origin) for every person
  * card and union heart.
  */
-export function assignCoordinates(
+function assignCoordinates(
   units: Map<string, FamilyUnit>,
   personById: Map<string, PersonNode>,
 ): { personPos: Map<string, Point>; unionPos: Map<string, Point> } {
