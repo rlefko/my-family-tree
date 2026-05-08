@@ -647,11 +647,18 @@ async def _build_messages(
     cap = settings.chat_max_inline_images
     history_limit = settings.chat_history_message_limit
 
-    history, remaining = await _history_messages(
-        request,
-        conversation_id,
-        inline_budget=cap,
-        history_limit=history_limit,
+    # Two independent reads: history opens its own session and fans out image
+    # fetches; proposals open a separate session for the AgentRun JOIN. Run
+    # them concurrently. Each call uses its own `session_scope`, so this
+    # honors the `AsyncSession is not concurrency-safe` constraint.
+    (history, remaining), proposal_rows = await asyncio.gather(
+        _history_messages(
+            request,
+            conversation_id,
+            inline_budget=cap,
+            history_limit=history_limit,
+        ),
+        _proposal_rows_for_conversation(request, conversation_id),
     )
 
     current_doc_ids = [a.document_id for a in req.attachments]
@@ -666,7 +673,6 @@ async def _build_messages(
     if not current_blocks:
         current_blocks = [TextBlock(type="text", text=req.message)]
 
-    proposal_rows = await _proposal_rows_for_conversation(request, conversation_id)
     session_state_text = _format_session_state(proposal_rows)
 
     messages = list(history)
