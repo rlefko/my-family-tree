@@ -13,8 +13,7 @@ import hashlib
 from uuid import UUID
 
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from my_family_tree.core.errors import (
     NotFoundError,
@@ -24,11 +23,10 @@ from my_family_tree.core.errors import (
 from my_family_tree.core.logging import get_logger
 from my_family_tree.core.time import utcnow
 from my_family_tree.db.session import session_scope
-from my_family_tree.ingest.lifecycle import reset_for_reingest
+from my_family_tree.ingest.lifecycle import count_chunks, has_embedding, reset_for_reingest
 from my_family_tree.ingest.pipeline import PipelineDeps, run_pipeline
 from my_family_tree.mcp.host import ToolContext
 from my_family_tree.mcp.registry import Capability, get_registry
-from my_family_tree.models.chunk import Chunk
 from my_family_tree.models.document import Document
 from my_family_tree.models.enums import DocumentKind, ProcessingStatus
 from my_family_tree.storage.s3 import storage_key
@@ -112,8 +110,8 @@ async def note_create(ctx: ToolContext, payload: NoteCreateInput) -> NoteCreated
             )
         ).scalar_one_or_none()
         if existing is not None:
-            chunk_count = await _count_chunks(session, existing.id)
-            embedded = await _has_any_embedding(session, existing.id)
+            chunk_count = await count_chunks(session, existing.id)
+            embedded = await has_embedding(session, existing.id)
             return NoteCreated(
                 document_id=existing.id,
                 chunk_count=chunk_count,
@@ -146,8 +144,8 @@ async def note_create(ctx: ToolContext, payload: NoteCreateInput) -> NoteCreated
     )
 
     async with session_scope(ctx.session_factory) as session:
-        chunk_count = await _count_chunks(session, document_id)
-        embedded = await _has_any_embedding(session, document_id)
+        chunk_count = await count_chunks(session, document_id)
+        embedded = await has_embedding(session, document_id)
     return NoteCreated(
         document_id=document_id,
         chunk_count=chunk_count,
@@ -226,8 +224,8 @@ async def note_update(ctx: ToolContext, payload: NoteUpdateInput) -> NoteUpdated
         )
 
     async with session_scope(ctx.session_factory) as session:
-        chunk_count = await _count_chunks(session, document_id)
-        embedded = await _has_any_embedding(session, document_id)
+        chunk_count = await count_chunks(session, document_id)
+        embedded = await has_embedding(session, document_id)
     return NoteUpdated(document_id=document_id, chunk_count=chunk_count, embedded=embedded)
 
 
@@ -267,18 +265,3 @@ async def note_delete(ctx: ToolContext, payload: NoteDeleteInput) -> NoteDeleted
                 error=str(e),
             )
     return NoteDeleted(document_id=document_id, deleted=True)
-
-
-async def _count_chunks(session: AsyncSession, document_id: UUID) -> int:
-    stmt = select(func.count()).select_from(Chunk).where(Chunk.document_id == document_id)
-    return int((await session.execute(stmt)).scalar_one() or 0)
-
-
-async def _has_any_embedding(session: AsyncSession, document_id: UUID) -> bool:
-    stmt = (
-        select(Chunk.id)
-        .where(Chunk.document_id == document_id)
-        .where(Chunk.embedding_half != None)  # noqa: E711  SQLAlchemy expects `!= None`
-        .limit(1)
-    )
-    return (await session.execute(stmt)).scalar_one_or_none() is not None

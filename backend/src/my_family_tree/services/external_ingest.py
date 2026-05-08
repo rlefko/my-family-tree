@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 from uuid import UUID
 
 import httpx
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from my_family_tree.core.logging import get_logger
@@ -25,8 +25,8 @@ from my_family_tree.core.time import utcnow
 from my_family_tree.db.session import session_scope
 from my_family_tree.embed.client import EmbeddingsClient
 from my_family_tree.external.fetch import fetch_url
+from my_family_tree.ingest.lifecycle import count_chunks, has_embedding
 from my_family_tree.ingest.pipeline import PipelineDeps, run_pipeline
-from my_family_tree.models.chunk import Chunk
 from my_family_tree.models.document import Document
 from my_family_tree.models.enums import DocumentKind, ProcessingStatus, SourceKind
 from my_family_tree.models.source import Source
@@ -74,8 +74,8 @@ class ExternalIngestService:
                     url=page.url,
                     title=title or page.title,
                 )
-                chunk_count = await _count_chunks(session, document_id=existing.id)
-                embedded = await _embedding_present(session, document_id=existing.id)
+                chunk_count = await count_chunks(session, existing.id)
+                embedded = await has_embedding(session, existing.id)
                 return ExternalIngestResult(
                     document_id=existing.id,
                     source_id=source_id,
@@ -132,10 +132,8 @@ class ExternalIngestService:
             deps=PipelineDeps(embeddings=self.embeddings),
         )
         async with session_scope(self.session_factory) as session:
-            chunk_count = await _count_chunks(session, document_id=document_id)
-            embedded = self.embeddings is not None and await _embedding_present(
-                session, document_id=document_id
-            )
+            chunk_count = await count_chunks(session, document_id)
+            embedded = self.embeddings is not None and await has_embedding(session, document_id)
         return ExternalIngestResult(
             document_id=document_id,
             source_id=source_id,
@@ -186,21 +184,6 @@ async def _find_or_create_source_for_document(
     session.add(source)
     await session.flush()
     return source.id
-
-
-async def _count_chunks(session: AsyncSession, *, document_id: UUID) -> int:
-    stmt = select(func.count()).select_from(Chunk).where(Chunk.document_id == document_id)
-    return int((await session.execute(stmt)).scalar_one() or 0)
-
-
-async def _embedding_present(session: AsyncSession, *, document_id: UUID) -> bool:
-    stmt = (
-        select(Chunk.id)
-        .where(Chunk.document_id == document_id)
-        .where(Chunk.embedding_half != None)  # noqa: E711  SQLAlchemy needs `!= None`, not `is not None`
-        .limit(1)
-    )
-    return (await session.execute(stmt)).scalar_one_or_none() is not None
 
 
 def _filename_for(url: str, title: str | None) -> str:

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import delete
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from my_family_tree.core.time import utcnow
@@ -13,7 +13,7 @@ from my_family_tree.models.chunk import Chunk
 from my_family_tree.models.document import Document, DocumentText
 from my_family_tree.models.enums import ProcessingStatus
 
-__all__ = ["reset_for_reingest"]
+__all__ = ["count_chunks", "has_embedding", "reset_for_reingest"]
 
 
 async def reset_for_reingest(session: AsyncSession, doc: Document) -> None:
@@ -37,3 +37,20 @@ async def reset_for_reingest(session: AsyncSession, doc: Document) -> None:
     doc.attempts = 0
     doc.processed_at = None
     doc.updated_at = utcnow()
+
+
+async def count_chunks(session: AsyncSession, document_id: UUID) -> int:
+    """Number of `Chunk` rows that belong to a document."""
+    stmt = select(func.count()).select_from(Chunk).where(Chunk.document_id == document_id)
+    return int((await session.execute(stmt)).scalar_one() or 0)
+
+
+async def has_embedding(session: AsyncSession, document_id: UUID) -> bool:
+    """True if at least one of a document's chunks carries an embedding."""
+    stmt = (
+        select(Chunk.id)
+        .where(Chunk.document_id == document_id)
+        .where(Chunk.embedding_half != None)  # noqa: E711  SQLAlchemy expects `!= None`
+        .limit(1)
+    )
+    return (await session.execute(stmt)).scalar_one_or_none() is not None
