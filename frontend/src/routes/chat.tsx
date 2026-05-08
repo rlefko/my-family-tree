@@ -1,7 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import {
-  Brain,
-  ChevronDown,
+  HelpCircle,
   Loader2,
   MessageSquarePlus,
   Paperclip,
@@ -9,23 +8,20 @@ import {
   Sparkles,
   Square,
 } from "lucide-react";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useConversations } from "@/api/endpoints/conversations";
 import { documentRawUrl, uploadDocumentRequest } from "@/api/endpoints/documents";
+import { Markdown } from "@/components/Markdown";
 import { ChatAttachments, type ChatAttachment } from "@/features/chat/ChatAttachments";
 import { InlineProposals } from "@/features/chat/InlineProposals";
-import { ToolCallCard } from "@/features/chat/ToolCallCard";
+import { CollapsedTrace, TraceEntries } from "@/features/chat/Trace";
 import {
-  traceSummary,
   useChatStream,
   type ChatAttachmentRef,
   type ChatTurn,
-  type ThinkingEntry,
+  type NeedsInputPrompt,
   type ToolEntry,
-  type TraceEntry,
 } from "@/features/chat/ChatStreamProvider";
 import { MAX_UPLOAD_BYTES, formatBytes } from "@/features/documents/constants";
 import { DEFAULT_TREE_ID } from "@/lib/tree";
@@ -175,17 +171,7 @@ function ChatPage() {
             <EmptyState />
           ) : (
             <ul className="mx-auto flex max-w-3xl flex-col gap-4">
-              {turns.map((turn) => (
-                <li
-                  key={turn.id}
-                  className={cn(
-                    "flex w-full",
-                    turn.role === "user" ? "justify-end" : "justify-start",
-                  )}
-                >
-                  <Bubble turn={turn} />
-                </li>
-              ))}
+              <ChatTurns turns={turns} />
             </ul>
           )}
         </div>
@@ -321,7 +307,32 @@ function ConversationSidebar({
   );
 }
 
-function Bubble({ turn }: { turn: ChatTurn }) {
+function ChatTurns({ turns }: { turns: ChatTurn[] }) {
+  // Compute the index of the most recent assistant turn once so the prompt
+  // card only renders on it, not on stale earlier turns whose questions were
+  // already answered.
+  let latestAssistantIndex = -1;
+  for (let i = turns.length - 1; i >= 0; i--) {
+    if (turns[i].role === "assistant") {
+      latestAssistantIndex = i;
+      break;
+    }
+  }
+  return (
+    <>
+      {turns.map((turn, idx) => (
+        <li
+          key={turn.id}
+          className={cn("flex w-full", turn.role === "user" ? "justify-end" : "justify-start")}
+        >
+          <Bubble turn={turn} isLatestAssistant={idx === latestAssistantIndex} />
+        </li>
+      ))}
+    </>
+  );
+}
+
+function Bubble({ turn, isLatestAssistant }: { turn: ChatTurn; isLatestAssistant: boolean }) {
   const isUser = turn.role === "user";
   const trace = turn.trace ?? [];
   const proposalIds = turn.proposalIds ?? [];
@@ -333,6 +344,7 @@ function Bubble({ turn }: { turn: ChatTurn }) {
     (e): e is ToolEntry => e.kind === "tool" && e.status === "running",
   );
   const live = Boolean(turn.pending);
+  const showPrompt = !isUser && isLatestAssistant && Boolean(turn.needsInput) && !turn.pending;
   return (
     <div
       className={cn(
@@ -368,7 +380,53 @@ function Bubble({ turn }: { turn: ChatTurn }) {
       {!isUser && turn.pending && !isQuiet ? (
         <BusyFooter runningToolName={runningTool?.name ?? null} isStreamingText={hasContent} />
       ) : null}
+      {showPrompt && turn.needsInput ? <UserInputPrompt prompt={turn.needsInput} /> : null}
       {!isUser && proposalIds.length > 0 ? <InlineProposals ids={proposalIds} /> : null}
+    </div>
+  );
+}
+
+function UserInputPrompt({ prompt }: { prompt: NeedsInputPrompt }) {
+  const { send, busy } = useChatStream();
+  const options = prompt.options ?? [];
+  const submit = (text: string) => {
+    if (busy || !text.trim()) return;
+    void send(text);
+  };
+  return (
+    <div className="mt-3 rounded-md border border-amber-200 bg-amber-50/70 p-2.5 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide">
+        <HelpCircle className="h-3 w-3" />
+        Question for you
+      </div>
+      <Markdown content={prompt.question} />
+      {options.length > 0 ? (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {options.map((opt) => (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => submit(opt)}
+              disabled={busy}
+              className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-100/80 px-2 py-1 text-xs font-medium text-amber-900 hover:bg-amber-200 disabled:opacity-60 dark:border-amber-800 dark:bg-amber-900/40 dark:text-amber-100 dark:hover:bg-amber-900/60"
+            >
+              {opt}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => submit("(no answer)")}
+            disabled={busy}
+            className="inline-flex items-center gap-1 rounded-md border border-input bg-background px-2 py-1 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-60"
+          >
+            Skip
+          </button>
+        </div>
+      ) : (
+        <div className="mt-2 text-[11px] text-amber-800/80 dark:text-amber-200/80">
+          Type your reply in the chat box below.
+        </div>
+      )}
     </div>
   );
 }
@@ -435,79 +493,6 @@ function BusyFooter({
   );
 }
 
-function ThinkingBlock({ entry, live }: { entry: ThinkingEntry; live: boolean }) {
-  // Default open while streaming so the user can read along, closed once the turn
-  // ends so old bubbles stay compact. The user's toggle is preserved across re-renders.
-  const [open, setOpen] = useState(live);
-  const firstLine = entry.text.split(/\n+/).find((line) => line.trim().length > 0) ?? "";
-  return (
-    <details
-      open={open}
-      onToggle={(e) => setOpen(e.currentTarget.open)}
-      className="group rounded-md border border-amber-200 bg-amber-50 text-xs dark:border-amber-900 dark:bg-amber-950/40"
-    >
-      <summary
-        className="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-amber-900 marker:hidden dark:text-amber-200"
-        title="Reasoning summary while the model deliberates. Raw thinking is never persisted; only the summary is shown."
-      >
-        <Brain
-          className={cn(
-            "h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400",
-            live ? "animate-pulse" : "",
-          )}
-        />
-        <span className="font-medium">Thinking</span>
-        {firstLine ? (
-          <span className="min-w-0 flex-1 truncate text-amber-800/70 dark:text-amber-200/60">
-            {firstLine}
-          </span>
-        ) : (
-          <span className="flex-1" />
-        )}
-        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-amber-600 transition-transform group-open:rotate-180 dark:text-amber-400" />
-      </summary>
-      <div className="border-t border-amber-200 px-2.5 py-2 text-amber-900 dark:border-amber-900 dark:text-amber-200">
-        {entry.text ? (
-          <Markdown content={entry.text} />
-        ) : (
-          <span className="italic opacity-70">Thinking...</span>
-        )}
-      </div>
-    </details>
-  );
-}
-
-function CollapsedTrace({ trace }: { trace: TraceEntry[] }) {
-  // Switching the parent JSX shape (flat list -> this wrapper) remounts every
-  // inner ThinkingBlock and ToolCallCard, resetting each to its closed default.
-  return (
-    <details className="group mb-2 rounded-md border border-border bg-muted/60 text-xs">
-      <summary className="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-muted-foreground marker:hidden">
-        <Brain className="h-3 w-3 text-amber-500" />
-        <span className="font-medium">{traceSummary(trace)}</span>
-        <ChevronDown className="ml-auto h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-180" />
-      </summary>
-      <div className="flex flex-col gap-1 border-t border-border p-2">
-        <TraceEntries entries={trace} live={false} />
-      </div>
-    </details>
-  );
-}
-
-function TraceEntries({ entries, live }: { entries: TraceEntry[]; live: boolean }) {
-  return (
-    <>
-      {entries.map((entry) =>
-        entry.kind === "thinking" ? (
-          <ThinkingBlock key={entry.id} entry={entry} live={live} />
-        ) : (
-          <ToolCallCard key={entry.id} call={entry} />
-        ),
-      )}
-    </>
-  );
-}
-
 function PendingHero() {
   return (
     <span className="inline-flex items-center gap-2 text-muted-foreground">
@@ -516,31 +501,6 @@ function PendingHero() {
     </span>
   );
 }
-
-// Memoized so frozen turn entries (past assistant content, sealed thinking
-// bursts) skip re-parsing markdown on every stream tick; only the active
-// entry's `content` reference changes per delta.
-const Markdown = memo(function Markdown({ content }: { content: string }) {
-  return (
-    <div className="prose-chat">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          a: ({ ...props }) => (
-            <a
-              {...props}
-              target="_blank"
-              rel="noreferrer"
-              className="text-primary underline-offset-2 hover:underline"
-            />
-          ),
-        }}
-      >
-        {content}
-      </ReactMarkdown>
-    </div>
-  );
-});
 
 function EmptyState() {
   return (

@@ -20,6 +20,7 @@ from my_family_tree.mcp.tools import (
     relationships,
     sources,
     stats,
+    subagents,
     web_search,
 )
 
@@ -40,5 +41,6 @@ __all__ = [
     "relationships",
     "sources",
     "stats",
+    "subagents",
     "web_search",
 ]

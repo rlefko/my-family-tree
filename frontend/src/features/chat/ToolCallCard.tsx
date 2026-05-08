@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import {
   AlertCircle,
   BookText,
+  Bot,
   Calendar,
   CheckCircle2,
   ChevronDown,
@@ -16,11 +17,13 @@ import {
   Users,
 } from "lucide-react";
 
+import { Markdown } from "@/components/Markdown";
 import { Tooltip } from "@/components/ui/tooltip";
 import { STATUS_PILL } from "@/lib/status-styles";
 import { cn } from "@/lib/utils";
 
 import type { ToolCall } from "./ChatStreamProvider";
+import { TraceEntries } from "./Trace";
 
 type SearchHit = {
   chunk_id?: string;
@@ -55,6 +58,9 @@ function StatusIcon({ status }: { status: ToolCall["status"] }) {
 
 function ToolIcon({ name }: { name: string }) {
   const className = "h-3.5 w-3.5 text-muted-foreground";
+  if (name === "traverse_and_summarize") {
+    return <Bot className="h-3.5 w-3.5 text-primary" />;
+  }
   if (name.startsWith("person_search") || name.startsWith("place_search")) {
     return <Search className={className} />;
   }
@@ -119,6 +125,8 @@ function previewFor(call: ToolCall): string | null {
       return "reject claim";
     case "request_user_input":
       return get("reason");
+    case "traverse_and_summarize":
+      return get("question");
     default:
       return null;
   }
@@ -129,6 +137,10 @@ export function ToolCallCard({ call }: { call: ToolCall }) {
   const hasOutput = call.output !== undefined && call.output !== null;
   const preview = previewFor(call);
   const citations = citationsFrom(call);
+  const isSubagent = call.name === "traverse_and_summarize";
+  const subagentTrace = call.subagentTrace ?? [];
+  const subagentSummary = call.subagentSummary ?? "";
+  const subagentPersons = isSubagent ? subagentPersonsFrom(call.output) : [];
   return (
     <details className="group rounded-md border border-border bg-muted/60 px-2.5 py-1.5 text-xs">
       <summary className="flex cursor-pointer items-center gap-2 text-foreground marker:hidden">
@@ -153,9 +165,107 @@ export function ToolCallCard({ call }: { call: ToolCall }) {
         <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
       </summary>
       {citations.length > 0 ? <Citations hits={citations} /> : null}
-      {hasInput ? <Section label="Input" value={call.input} /> : null}
-      {hasOutput ? <Section label="Output" value={call.output} /> : null}
+      {isSubagent ? (
+        <SubagentBody
+          input={call.input}
+          trace={subagentTrace}
+          summary={subagentSummary}
+          persons={subagentPersons}
+          live={call.status === "running"}
+        />
+      ) : (
+        <>
+          {hasInput ? <Section label="Input" value={call.input} /> : null}
+          {hasOutput ? <Section label="Output" value={call.output} /> : null}
+        </>
+      )}
     </details>
+  );
+}
+
+type SubagentPerson = { id: string; display_name: string };
+
+function subagentPersonsFrom(output: unknown): SubagentPerson[] {
+  if (output === null || typeof output !== "object") return [];
+  const persons = (output as { persons?: unknown }).persons;
+  if (!Array.isArray(persons)) return [];
+  const out: SubagentPerson[] = [];
+  for (const p of persons) {
+    if (p === null || typeof p !== "object") continue;
+    const obj = p as Record<string, unknown>;
+    const id = typeof obj.id === "string" ? obj.id : null;
+    const display = typeof obj.display_name === "string" ? obj.display_name : null;
+    if (id && display) out.push({ id, display_name: display });
+  }
+  return out;
+}
+
+function SubagentBody({
+  input,
+  trace,
+  summary,
+  persons,
+  live,
+}: {
+  input: unknown;
+  trace: ToolCall["subagentTrace"];
+  summary: string;
+  persons: SubagentPerson[];
+  live: boolean;
+}) {
+  const inputObj = input && typeof input === "object" ? (input as Record<string, unknown>) : null;
+  const question = inputObj && typeof inputObj.question === "string" ? inputObj.question : null;
+  const traceEntries = trace ?? [];
+  return (
+    <div className="mt-2 flex flex-col gap-2">
+      {question ? (
+        <div className="rounded border border-border bg-card p-2 text-[11px] leading-snug">
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Question
+          </div>
+          <div className="whitespace-pre-wrap text-foreground">{question}</div>
+        </div>
+      ) : null}
+      {traceEntries.length > 0 ? (
+        <div>
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Subagent trace
+          </div>
+          <div className="flex flex-col gap-1">
+            <TraceEntries entries={traceEntries} live={live} />
+          </div>
+        </div>
+      ) : live ? (
+        <div className="text-[11px] italic text-muted-foreground">Subagent working...</div>
+      ) : null}
+      {summary ? (
+        <div className="rounded border border-border bg-card p-2 text-[11px] leading-snug">
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Summary
+          </div>
+          <Markdown content={summary} />
+        </div>
+      ) : null}
+      {persons.length > 0 ? (
+        <div>
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            People surfaced ({persons.length})
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {persons.map((p) => (
+              <span
+                key={p.id}
+                className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary"
+                title={p.id}
+              >
+                <Users className="h-3 w-3" />
+                <span className="max-w-[200px] truncate">{p.display_name}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 

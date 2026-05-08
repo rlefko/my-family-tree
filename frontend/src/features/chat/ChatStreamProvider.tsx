@@ -41,6 +41,8 @@ export type ToolCall = {
   status: "running" | "ok" | "error";
   input?: unknown;
   output?: unknown;
+  subagentTrace?: TraceEntry[];
+  subagentSummary?: string;
 };
 
 export type ThinkingEntry = { kind: "thinking"; id: string; text: string };
@@ -53,6 +55,12 @@ export function traceSummary(trace: TraceEntry[]): string {
   return `Reasoned and used ${toolCount} tool${toolCount === 1 ? "" : "s"}`;
 }
 
+export type NeedsInputPrompt = {
+  question: string;
+  options?: string[] | null;
+  schemaHint?: string | null;
+};
+
 export type ChatTurn = {
   id: string;
   role: "user" | "assistant";
@@ -62,6 +70,7 @@ export type ChatTurn = {
   trace?: TraceEntry[];
   proposalIds?: string[];
   attachments?: ChatAttachmentRef[];
+  needsInput?: NeedsInputPrompt;
 };
 
 const STORAGE_KEY = "mft.activeConversation";
@@ -125,18 +134,28 @@ function turnsFromMessages(messages: MessageRow[]): ChatTurn[] {
         if (block.type === "text") {
           turn.content += block.text;
         } else if (block.type === "tool_use") {
-          // Raw thinking is never persisted; rehydrated traces only carry tools.
-          turn.trace = [
-            ...(turn.trace ?? []),
-            {
-              kind: "tool",
-              id: block.id,
-              name: block.name,
-              status: block.is_error ? "error" : "ok",
-              input: block.input,
-              output: block.output,
-            },
-          ];
+          const toolEntry: ToolEntry = {
+            kind: "tool",
+            id: block.id,
+            name: block.name,
+            status: block.is_error ? "error" : "ok",
+            input: block.input,
+            output: block.output,
+          };
+          if (block.name === "traverse_and_summarize" && !block.is_error) {
+            const lifted = liftSubagentTrace(block.output);
+            if (lifted !== null) {
+              toolEntry.subagentTrace = lifted.trace;
+              toolEntry.subagentSummary = lifted.summary;
+            }
+          }
+          turn.trace = [...(turn.trace ?? []), toolEntry];
+          if (block.name === "request_user_input" && !block.is_error) {
+            const liftedInput = liftNeedsInput(block.input, block.output);
+            if (liftedInput !== null) {
+              turn.needsInput = liftedInput;
+            }
+          }
         } else if (block.type === "proposals_summary") {
           turn.proposalIds = [...(turn.proposalIds ?? []), ...block.proposal_ids];
         }
@@ -145,6 +164,139 @@ function turnsFromMessages(messages: MessageRow[]): ChatTurn[] {
     }
   }
   return turns;
+}
+
+function applySubagentEvent(parent: ToolEntry, inner: Record<string, unknown>): ToolEntry {
+  // Mutate a copy of the parent tool entry's `subagentTrace` and
+  // `subagentSummary` based on a single inner event from the traversal
+  // subagent's loop. The inner event shapes mirror the top-level chat events
+  // (`text_delta`, `thinking_delta`, `tool_use_started`, `tool_use_finished`,
+  // `tool_result`, `error`).
+  const innerType = inner.type;
+  const trace = parent.subagentTrace ?? [];
+  const summary = parent.subagentSummary ?? "";
+  if (innerType === "text_delta") {
+    const text = typeof inner.text === "string" ? inner.text : "";
+    if (!text) return parent;
+    return { ...parent, subagentSummary: summary + text };
+  }
+  if (innerType === "thinking_delta") {
+    const text = typeof inner.text === "string" ? inner.text : "";
+    if (!text) return parent;
+    const last = trace[trace.length - 1];
+    if (last?.kind === "thinking") {
+      const next = trace.slice(0, -1);
+      next.push({ ...last, text: last.text + text });
+      return { ...parent, subagentTrace: next };
+    }
+    return {
+      ...parent,
+      subagentTrace: [...trace, { kind: "thinking", id: crypto.randomUUID(), text }],
+    };
+  }
+  if (innerType === "tool_use_started") {
+    const id = typeof inner.id === "string" ? inner.id : crypto.randomUUID();
+    const name = typeof inner.name === "string" ? inner.name : "tool";
+    return {
+      ...parent,
+      subagentTrace: [...trace, { kind: "tool", id, name, status: "running" }],
+    };
+  }
+  if (innerType === "tool_use_finished") {
+    const id = typeof inner.id === "string" ? inner.id : "";
+    return {
+      ...parent,
+      subagentTrace: trace.map((e) =>
+        e.kind === "tool" && e.id === id ? { ...e, input: inner.input ?? e.input } : e,
+      ),
+    };
+  }
+  if (innerType === "tool_result") {
+    const id = typeof inner.tool_use_id === "string" ? inner.tool_use_id : "";
+    const isError = inner.is_error === true;
+    return {
+      ...parent,
+      subagentTrace: trace.map((e) =>
+        e.kind === "tool" && e.id === id
+          ? { ...e, status: isError ? "error" : "ok", output: inner.output }
+          : e,
+      ),
+    };
+  }
+  if (innerType === "error") {
+    const message = typeof inner.message === "string" ? inner.message : "subagent error";
+    return { ...parent, subagentSummary: summary ? `${summary}\n\n${message}` : message };
+  }
+  return parent;
+}
+
+function liftSubagentTrace(output: unknown): { trace: TraceEntry[]; summary: string } | null {
+  // The traversal subagent persists its proof of work as
+  // `output.trace: [{type: "text" | "thinking" | "tool_use", ...}, ...]`.
+  // Convert into the same `TraceEntry` shape the live stream uses so the
+  // tool card can render it through the shared `<TraceEntries />` component.
+  if (output === null || typeof output !== "object") return null;
+  const raw = output as Record<string, unknown>;
+  const summaryRaw = raw.summary;
+  const summary = typeof summaryRaw === "string" ? summaryRaw : "";
+  const traceRaw = raw.trace;
+  if (!Array.isArray(traceRaw)) {
+    return summary ? { trace: [], summary } : null;
+  }
+  const trace: TraceEntry[] = [];
+  for (const item of traceRaw) {
+    if (item === null || typeof item !== "object") continue;
+    const obj = item as Record<string, unknown>;
+    const itemType = obj.type;
+    if (itemType === "thinking") {
+      const text = typeof obj.text === "string" ? obj.text : "";
+      trace.push({ kind: "thinking", id: crypto.randomUUID(), text });
+    } else if (itemType === "tool_use") {
+      const id = typeof obj.id === "string" ? obj.id : crypto.randomUUID();
+      const name = typeof obj.name === "string" ? obj.name : "tool";
+      trace.push({
+        kind: "tool",
+        id,
+        name,
+        status: obj.is_error === true ? "error" : "ok",
+        input: obj.input ?? null,
+        output: obj.output ?? null,
+      });
+    }
+    // Text items are not surfaced inside the trace; their content is in
+    // `summary` and rendered separately under the trace.
+  }
+  return { trace, summary };
+}
+
+function liftNeedsInput(input: unknown, output: unknown): NeedsInputPrompt | null {
+  // Prefer the persisted output (echo of the parsed input) but fall back to
+  // the raw input so old persisted rows from before the echo change still
+  // render a prompt card on rehydration.
+  const sources: unknown[] = [output, input];
+  for (const candidate of sources) {
+    if (candidate === null || typeof candidate !== "object") continue;
+    const obj = candidate as Record<string, unknown>;
+    const question =
+      typeof obj.question === "string" && obj.question
+        ? obj.question
+        : typeof obj.reason === "string" && obj.reason
+          ? obj.reason
+          : null;
+    if (question === null) continue;
+    const optionsRaw = obj.options;
+    const options = Array.isArray(optionsRaw)
+      ? optionsRaw.filter((v): v is string => typeof v === "string")
+      : null;
+    const schemaHintRaw = obj.schema_hint;
+    const schemaHint = typeof schemaHintRaw === "string" ? schemaHintRaw : null;
+    return {
+      question,
+      options: options && options.length > 0 ? options : null,
+      schemaHint,
+    };
+  }
+  return null;
 }
 
 export type ChatAttachmentRef = {
@@ -449,6 +601,38 @@ export function applyEvent(turn: ChatTurn, type: string, data: SseEventData): Ch
             : e,
         ),
       };
+    }
+    case "needs_input": {
+      const question = String((data as { question?: string })?.question ?? "");
+      if (!question) return turn;
+      const optionsRaw = (data as { options?: unknown })?.options;
+      const options = Array.isArray(optionsRaw)
+        ? optionsRaw.filter((v): v is string => typeof v === "string")
+        : null;
+      const schemaHintRaw = (data as { schema_hint?: unknown })?.schema_hint;
+      const schemaHint = typeof schemaHintRaw === "string" ? schemaHintRaw : null;
+      return {
+        ...turn,
+        needsInput: {
+          question,
+          options: options && options.length > 0 ? options : null,
+          schemaHint,
+        },
+      };
+    }
+    case "subagent_event": {
+      const parentId = String((data as { parent_tool_use_id?: string })?.parent_tool_use_id ?? "");
+      const inner = (data as { event?: unknown })?.event;
+      if (!parentId || inner === null || typeof inner !== "object") return turn;
+      const trace = turn.trace ?? [];
+      const idx = trace.findIndex((e) => e.kind === "tool" && e.id === parentId);
+      if (idx === -1) return turn;
+      const target = trace[idx] as ToolEntry;
+      const updated = applySubagentEvent(target, inner as Record<string, unknown>);
+      if (updated === target) return turn;
+      const nextTrace = trace.slice();
+      nextTrace[idx] = updated;
+      return { ...turn, trace: nextTrace };
     }
     case "done": {
       const proposalIds = ((data as { proposal_ids?: string[] })?.proposal_ids ?? []).map(String);
