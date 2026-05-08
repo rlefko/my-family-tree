@@ -7,7 +7,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
@@ -30,6 +30,8 @@ from my_family_tree.llm.base import (
     ImageBlock,
     Message as LLMMessage,
     TextBlock,
+    ToolResultBlock,
+    ToolUseBlock,
 )
 from my_family_tree.mcp import tools  # noqa: F401  importing the package registers every tool
 from my_family_tree.mcp.host import ToolContext, ToolHost
@@ -37,8 +39,17 @@ from my_family_tree.mcp.registry import Capability, get_registry
 from my_family_tree.models.agent_run import AgentRun
 from my_family_tree.models.conversation import Conversation
 from my_family_tree.models.document import Document
-from my_family_tree.models.enums import AgentRole, DocumentKind, MessageRole, RunStatus
+from my_family_tree.models.enums import (
+    AgentRole,
+    DocumentKind,
+    MessageRole,
+    ProposalAction,
+    ProposalStatus,
+    RunStatus,
+    SubjectType,
+)
 from my_family_tree.models.message import Message
+from my_family_tree.models.proposal import Proposal
 from my_family_tree.models.tree import Tree
 
 DEFAULT_TREE_NAME = "My Family Tree"
@@ -372,18 +383,193 @@ def _user_attachment_doc_ids(content_json: list[dict[str, Any]]) -> list[UUID]:
 def _text_from_blocks(content_json: list[dict[str, Any]]) -> str:
     """Concatenate `text` blocks from a persisted message's `content_json`.
 
-    Used for both user and assistant rows: user messages may also carry
-    `attachment` blocks (resolved separately) and assistant messages may
-    carry `tool_use`, `tool_result`, `thinking`, or `proposals_summary`
-    blocks. Those are intentionally skipped: past tool calls were ephemeral
-    to the turn that made them and the LLM only needs the visible answer to
-    maintain conversational continuity. Old bracket-prefixed user messages
-    stay readable verbatim because they are stored as a single text block."""
+    Used for user rows, which may also carry `attachment` blocks resolved
+    separately. Assistant rows go through `_assistant_messages_from_content`
+    so prior tool calls and their results are rehydrated for the LLM."""
     return "".join(
         str(b.get("text", ""))
         for b in (content_json or [])
         if isinstance(b, dict) and b.get("type") == "text"
     )
+
+
+def _assistant_messages_from_content(
+    content_json: list[dict[str, Any]],
+) -> list[LLMMessage]:
+    """Rehydrate a persisted assistant row into the (assistant, tool?) LLM
+    message pair the providers expect, skipping `proposals_summary` and
+    `thinking` blocks. A `tool_use` with no recorded `output` synthesizes
+    an error `ToolResultBlock` so the tool_use to tool_result pairing the
+    Anthropic and OpenAI APIs require is never violated."""
+    text_parts: list[str] = []
+    tool_uses: list[ToolUseBlock] = []
+    tool_results: list[ToolResultBlock] = []
+    for block in content_json or []:
+        if not isinstance(block, dict):
+            continue
+        btype = block.get("type")
+        if btype == "text":
+            text = str(block.get("text", ""))
+            if text:
+                text_parts.append(text)
+        elif btype == "tool_use":
+            call_id = str(block.get("id") or "")
+            name = str(block.get("name") or "")
+            raw_input = block.get("input")
+            input_dict = raw_input if isinstance(raw_input, dict) else {}
+            tool_uses.append(ToolUseBlock(type="tool_use", id=call_id, name=name, input=input_dict))
+            output = block.get("output")
+            is_error = bool(block.get("is_error", False))
+            if output is None:
+                output = {"error": "tool result missing from persisted turn"}
+                is_error = True
+            tool_results.append(
+                ToolResultBlock(
+                    type="tool_result",
+                    tool_use_id=call_id,
+                    output=output,
+                    is_error=is_error,
+                )
+            )
+
+    assistant_blocks: list[ContentBlock] = []
+    if text_parts:
+        assistant_blocks.append(TextBlock(type="text", text="".join(text_parts)))
+    assistant_blocks.extend(tool_uses)
+
+    out: list[LLMMessage] = []
+    if assistant_blocks:
+        out.append(LLMMessage(role="assistant", content=assistant_blocks))
+    if tool_results:
+        out.append(LLMMessage(role="tool", content=list(tool_results)))
+    return out
+
+
+@dataclass(slots=True, frozen=True)
+class _ProposalRow:
+    """Slim view of a `Proposal` used to render the [Session state] block."""
+
+    proposal_id: UUID
+    action: ProposalAction
+    target_type: SubjectType | None
+    payload: dict[str, Any]
+    status: ProposalStatus
+    target_id: UUID | None
+
+
+_SESSION_STATE_HEADER = (
+    "[Session state] Proposals created in this conversation. Treat "
+    "status=approved as canonical: do NOT re-propose the same person, "
+    "relationship, event, place, or source, and you may reference its "
+    "target_id directly. Treat status=pending as already queued: do not "
+    "duplicate it. Treat status=rejected as a decision not to retry "
+    "unless the user asks explicitly. status=expired is stale. This "
+    "block is out-of-band like [Attached: ...]; do not echo it back."
+)
+
+
+def _subject_update_fields(payload: dict[str, Any], pk: str) -> str:
+    keys = sorted(k for k in payload if k != pk)
+    return f"update fields: {', '.join(keys)}" if keys else "update"
+
+
+# target_type=None covers source/claim/conflict proposals; mirrors the
+# `_APPLY_ORDER` shape in `proposals.py`.
+_SUBJECT_DISPATCH: dict[
+    tuple[ProposalAction, SubjectType | None], Callable[[dict[str, Any]], str]
+] = {
+    (ProposalAction.create, SubjectType.person): lambda p: str(
+        p.get("display_name") or "(unnamed person)"
+    ),
+    (ProposalAction.update, SubjectType.person): lambda p: _subject_update_fields(p, "person_id"),
+    (ProposalAction.merge, SubjectType.person): lambda p: (
+        f"merge loser {p.get('loser_id')} into winner {p.get('winner_id')}"
+    ),
+    (ProposalAction.create, SubjectType.relationship): lambda p: (
+        f"{p.get('type') or 'relationship'}: {p.get('subject_id')} -> {p.get('object_id')}"
+    ),
+    (ProposalAction.delete, SubjectType.relationship): lambda p: (
+        f"delete relationship {p.get('relationship_id')}"
+    ),
+    (ProposalAction.create, SubjectType.event): lambda p: (
+        f"{p.get('type') or 'event'} {p.get('date_text') or ''}".strip()
+    ),
+    (ProposalAction.update, SubjectType.event): lambda p: _subject_update_fields(p, "event_id"),
+    (ProposalAction.create, SubjectType.place): lambda p: str(p.get("name") or "(unnamed place)"),
+    (ProposalAction.create, None): lambda p: str(p.get("title") or p.get("kind") or "source"),
+    (ProposalAction.accept_claim, None): lambda p: f"accept claim {p.get('claim_id')}",
+    (ProposalAction.reject_claim, None): lambda p: f"reject claim {p.get('claim_id')}",
+    (ProposalAction.resolve_conflict, None): lambda p: f"resolve conflict {p.get('conflict_id')}",
+}
+
+
+def _proposal_subject(
+    action: ProposalAction, target_type: SubjectType | None, payload: dict[str, Any]
+) -> str:
+    """One-line summary dispatched on `(action, target_type)`, falling back
+    to a truncated JSON dump for shapes the dispatch table does not cover."""
+    handler = _SUBJECT_DISPATCH.get((action, target_type))
+    if handler is not None:
+        return handler(payload)
+    return json.dumps(payload, sort_keys=True, default=str)[:80]
+
+
+def _format_session_state(rows: list[_ProposalRow]) -> str:
+    """Render proposal rows into the [Session state] block, or '' when
+    there is nothing to render so the caller can skip the injection."""
+    if not rows:
+        return ""
+    lines: list[str] = [_SESSION_STATE_HEADER]
+    for row in rows:
+        subject = _proposal_subject(row.action, row.target_type, row.payload)
+        target_type_str = row.target_type.value if row.target_type is not None else "-"
+        target_str = (
+            f" -> {row.target_type.value if row.target_type is not None else 'target'} "
+            f"{row.target_id}"
+            if row.target_id is not None
+            else ""
+        )
+        lines.append(
+            f"- proposal {row.proposal_id} | {row.action.value} {target_type_str} | "
+            f"{subject} | status={row.status.value}{target_str}"
+        )
+    return "\n".join(lines)
+
+
+async def _proposal_rows_for_conversation(
+    request: Request,
+    conversation_id: UUID,
+) -> list[_ProposalRow]:
+    """Load proposals attached to any `AgentRun` belonging to this
+    conversation, in the order they were created. Status and target_id are
+    read fresh per turn so an inline approval is reflected immediately."""
+    session_factory = request.app.state.session_factory
+    async with session_scope(session_factory) as session:
+        stmt = (
+            select(
+                Proposal.id,
+                Proposal.action,
+                Proposal.target_type,
+                Proposal.payload_json,
+                Proposal.status,
+                Proposal.target_id,
+            )
+            .join(AgentRun, Proposal.agent_run_id == AgentRun.id)
+            .where(AgentRun.conversation_id == conversation_id)
+            .order_by(Proposal.created_at)
+        )
+        rows = (await session.execute(stmt)).all()
+    return [
+        _ProposalRow(
+            proposal_id=r[0],
+            action=r[1],
+            target_type=r[2],
+            payload=r[3] or {},
+            status=r[4],
+            target_id=r[5],
+        )
+        for r in rows
+    ]
 
 
 async def _history_messages(
@@ -431,11 +617,7 @@ async def _history_messages(
             if blocks:
                 messages.append(LLMMessage(role="user", content=blocks))
         elif m.role == MessageRole.assistant:
-            text = _text_from_blocks(m.content_json or [])
-            if text:
-                messages.append(
-                    LLMMessage(role="assistant", content=[TextBlock(type="text", text=text)])
-                )
+            messages.extend(_assistant_messages_from_content(m.content_json or []))
     return messages, remaining
 
 
@@ -453,11 +635,18 @@ async def _build_messages(
     cap = settings.chat_max_inline_images
     history_limit = settings.chat_history_message_limit
 
-    history, remaining = await _history_messages(
-        request,
-        conversation_id,
-        inline_budget=cap,
-        history_limit=history_limit,
+    # Two independent reads: history opens its own session and fans out image
+    # fetches; proposals open a separate session for the AgentRun JOIN. Run
+    # them concurrently. Each call uses its own `session_scope`, so this
+    # honors the `AsyncSession is not concurrency-safe` constraint.
+    (history, remaining), proposal_rows = await asyncio.gather(
+        _history_messages(
+            request,
+            conversation_id,
+            inline_budget=cap,
+            history_limit=history_limit,
+        ),
+        _proposal_rows_for_conversation(request, conversation_id),
     )
 
     current_doc_ids = [a.document_id for a in req.attachments]
@@ -472,7 +661,22 @@ async def _build_messages(
     if not current_blocks:
         current_blocks = [TextBlock(type="text", text=req.message)]
 
+    session_state_text = _format_session_state(proposal_rows)
+
     messages = list(history)
+    if session_state_text:
+        log.info(
+            "chat.session_state",
+            conversation_id=str(conversation_id),
+            proposal_count=len(proposal_rows),
+            bytes=len(session_state_text),
+        )
+        messages.append(
+            LLMMessage(
+                role="user",
+                content=[TextBlock(type="text", text=session_state_text)],
+            )
+        )
     messages.append(LLMMessage(role="user", content=current_blocks))
     return messages, current_resolved
 

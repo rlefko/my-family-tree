@@ -16,10 +16,13 @@ import pytest
 
 from my_family_tree.agent.budgets import Budgets
 from my_family_tree.agent.loop import ChatAgent
+from my_family_tree.api.routers.chat import _assistant_messages_from_content
 from my_family_tree.llm.base import (
     Message,
     StreamEvent,
     TextBlock,
+    ToolResultBlock,
+    ToolUseBlock,
     UsageDelta,
 )
 
@@ -72,7 +75,9 @@ class FakeProvider:
         cache: Any = None,
     ) -> AsyncIterator[StreamEvent]:
         del model, system, tools, max_tokens, temperature, reasoning, cache
-        self.seen_messages.append(messages)
+        # Snapshot the list so post-call mutations to the agent's `history`
+        # don't leak into what we recorded for this stream call.
+        self.seen_messages.append(list(messages))
         events = self.scripts.pop(0) if self.scripts else []
         return _aiter(events)
 
@@ -247,3 +252,62 @@ async def test_tool_with_malformed_json_input_surfaces_real_error_without_host_c
     second_history = provider.seen_messages[1]
     assert any(m.role == "assistant" for m in second_history)
     assert any(m.role == "tool" for m in second_history)
+
+
+@pytest.mark.unit
+async def test_second_turn_sees_prior_tool_history_via_rehydrated_messages() -> None:
+    """The bug being fixed: each turn used to start blind because
+    `_history_messages` stripped tool calls when reloading the conversation.
+    With the splitter in place, the persisted assistant `content_json` for a
+    prior turn rehydrates into the assistant tool_use + tool tool_result pair
+    the providers expect, so the second turn's first stream call already
+    sees the agent's earlier `person_search` and the canonical id it found.
+    """
+    persisted_assistant_content = [
+        {
+            "type": "tool_use",
+            "id": "call_anna_search",
+            "name": "person_search",
+            "input": {"query": "Anna"},
+            "output": {"results": [{"id": "p-anna", "display_name": "Anna Doe"}]},
+            "is_error": False,
+        },
+        {"type": "text", "text": "Found Anna."},
+    ]
+    rehydrated = _assistant_messages_from_content(persisted_assistant_content)
+    assert [m.role for m in rehydrated] == ["assistant", "tool"]
+
+    history: list[Message] = [
+        Message(role="user", content=[TextBlock(type="text", text="Search for Anna.")]),
+        *rehydrated,
+        Message(
+            role="user",
+            content=[TextBlock(type="text", text="Anna's birthday is January 1, 1950.")],
+        ),
+    ]
+    provider = FakeProvider(scripts=[[_text("Queued an event."), _usage(), _done()]])
+    host = FakeHost()
+    agent = ChatAgent(provider=provider, model="m", host=host, budgets=Budgets())
+
+    async for _ in agent.run_turn(history):
+        pass
+
+    seen = provider.seen_messages[0]
+    assistant_msgs = [m for m in seen if m.role == "assistant"]
+    tool_msgs = [m for m in seen if m.role == "tool"]
+    assert len(assistant_msgs) == 1
+    assert len(tool_msgs) == 1
+
+    use_block = next(b for b in assistant_msgs[0].content if isinstance(b, ToolUseBlock))
+    assert use_block.id == "call_anna_search"
+    assert use_block.name == "person_search"
+    assert use_block.input == {"query": "Anna"}
+
+    result_block = next(b for b in tool_msgs[0].content if isinstance(b, ToolResultBlock))
+    assert result_block.tool_use_id == "call_anna_search"
+    assert result_block.output == {"results": [{"id": "p-anna", "display_name": "Anna Doe"}]}
+    assert result_block.is_error is False
+
+    # The agent did not re-call person_search: with prior results visible in
+    # history, the host received nothing on this turn.
+    assert host.calls == []
