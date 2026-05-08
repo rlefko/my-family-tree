@@ -171,7 +171,6 @@ async def _ensure_conversation_and_run(
         if conv.title is None and goal:
             conv.title = goal[:80]
 
-        budgets = Budgets()
         run = AgentRun(
             conversation_id=conversation_id,
             role=AgentRole.chat,
@@ -179,8 +178,6 @@ async def _ensure_conversation_and_run(
             status=RunStatus.running,
             model=model,
             provider=provider,
-            budget_tokens=budgets.tokens,
-            budget_tool_calls=budgets.tool_calls,
             started_at=utcnow(),
         )
         session.add(run)
