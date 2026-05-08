@@ -24,8 +24,8 @@ DEEP_RESEARCH_SYSTEM_PROMPT = (
 @dataclass(slots=True)
 class DeepResearchSpec:
     goal: str
-    max_tokens: int = 500_000
-    max_tool_calls: int = 100
+    max_tokens: int = 5_000_000
+    max_tool_calls: int = 500
     wall_clock_s: int = 1800
 
     def budgets(self) -> Budgets:
