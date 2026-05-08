@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, Upload, X } from "lucide-react";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 
-import { uploadDocumentRequest, useDocument, type DocumentDetail } from "@/api/endpoints/documents";
+import { uploadDocumentRequest, useDocument, type DocumentCreated } from "@/api/endpoints/documents";
 import { Progress } from "@/components/ui/progress";
 import type { ApiError } from "@/api/client";
 import { MAX_UPLOAD_BYTES, formatBytes } from "@/features/documents/constants";
@@ -74,11 +74,11 @@ export const UploadDropzone = forwardRef<UploadDropzoneHandle, Props>(function U
             );
           },
         })
-          .then((doc: DocumentDetail) => {
+          .then((doc: DocumentCreated) => {
             setItems((prev) =>
               prev.map((it) =>
                 it.id === id
-                  ? { ...it, status: "processing", progress: 1, documentId: doc.id }
+                  ? { ...it, status: "processing", progress: 1, documentId: doc.document_id }
                   : it,
               ),
             );

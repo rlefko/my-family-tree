@@ -86,7 +86,16 @@ function ChatPage() {
         .then((doc) => {
           setAttachments((prev) =>
             prev.map((a) =>
-              a.tempId === tempId ? { ...a, status: "ready", progress: 1, documentId: doc.id } : a,
+              a.tempId === tempId
+                ? {
+                    ...a,
+                    status: "ready",
+                    progress: 1,
+                    documentId: doc.document_id,
+                    mimeType: doc.mime_type,
+                    kind: doc.kind,
+                  }
+                : a,
             ),
           );
         })
@@ -118,7 +127,14 @@ function ChatPage() {
     if (!text.trim() || busy || uploading) return;
     const ready = attachments.flatMap((a) =>
       a.status === "ready" && a.documentId
-        ? [{ documentId: a.documentId, filename: a.filename }]
+        ? [
+            {
+              documentId: a.documentId,
+              filename: a.filename,
+              mimeType: a.mimeType ?? null,
+              kind: a.kind ?? null,
+            },
+          ]
         : [],
     );
     void send(text, ready);
