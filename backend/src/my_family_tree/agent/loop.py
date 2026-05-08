@@ -52,12 +52,12 @@ class ChatAgent:
     host: ToolHost
     budgets: Budgets = field(default_factory=Budgets)
     system_prompt: str = CHAT_SYSTEM_PROMPT
-    reasoning: ReasoningConfig = field(default_factory=lambda: ReasoningConfig(effort="high"))
-    # Per-call cap. With `reasoning.effort="high"` the same budget covers
-    # reasoning, text, and tool-call argument JSON, so a 4096 default would
-    # routinely truncate a long `note_create(body=...)` mid-stream and leave
-    # the loop with unparseable arguments.
-    max_output_tokens: int = 16384
+    reasoning: ReasoningConfig = field(default_factory=lambda: ReasoningConfig(effort="medium"))
+    # Per-call cap. The same budget covers reasoning, text, and tool-call
+    # argument JSON, so smaller defaults like 4096 routinely truncated long
+    # `note_create(body=...)` calls mid-stream and left the loop with
+    # unparseable arguments.
+    max_output_tokens: int = 32768
 
     async def run_turn(  # noqa: PLR0912  the loop is naturally branchy
         self,
@@ -263,16 +263,15 @@ class ChatAgent:
         )
         try:
             result = await self.host.call(current_tool["name"], parsed)
-            return block, ToolResultBlock(
-                type="tool_result",
-                tool_use_id=current_tool["id"],
-                output=result.model_dump(mode="json"),
-            )
         except Exception as e:
-            log.warning("agent.tool_error", tool=current_tool["name"], error=str(e))
             return block, ToolResultBlock(
                 type="tool_result",
                 tool_use_id=current_tool["id"],
                 output={"error": str(e)},
                 is_error=True,
             )
+        return block, ToolResultBlock(
+            type="tool_result",
+            tool_use_id=current_tool["id"],
+            output=result.model_dump(mode="json"),
+        )
