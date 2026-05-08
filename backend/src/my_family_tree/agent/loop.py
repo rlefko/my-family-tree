@@ -48,6 +48,16 @@ class _QueueSink:
         self._queue.put_nowait(event)
 
 
+@dataclass(slots=True)
+class _PendingTool:
+    """One in-flight tool call parked while the LLM stream is still open."""
+
+    parent_tool_id: str
+    sub_queue: asyncio.Queue[Any]
+    task: asyncio.Task[tuple[ToolUseBlock, ToolResultBlock]]
+    prior_text: list[str]
+
+
 log = get_logger(__name__)
 
 
@@ -78,11 +88,9 @@ class ChatAgent:
     budgets: Budgets = field(default_factory=Budgets)
     system_prompt: str = CHAT_SYSTEM_PROMPT
     reasoning: ReasoningConfig = field(default_factory=lambda: ReasoningConfig(effort="medium"))
-    # Anthropic prompt-caching hint. Defaults to caching the system prompt and
-    # the tool catalog, both of which are the same for every turn in a
-    # conversation. OpenAI handles caching automatically and ignores this; the
-    # field exists so we can still benefit on the Anthropic side without a
-    # provider-specific code path.
+    # OpenAI handles prompt caching automatically and ignores this; the
+    # default exists so the Anthropic provider gets free system-prompt and
+    # tool-catalog caching every turn without a provider-specific branch.
     cache: CacheConfig = field(default_factory=CacheConfig)
     # Per-call cap. The same budget covers reasoning, text, and tool-call
     # argument JSON, so smaller defaults like 4096 routinely truncated long
@@ -131,22 +139,12 @@ class ChatAgent:
                 reasoning=self.reasoning,
                 cache=self.cache,
             )
-            # Each entry is `(parent_tool_id, sub_queue, tool_task,
-            # prior_text_snapshot)`. We park tool tasks here as soon as their
-            # `tool_use_finished` event arrives so multiple tool calls within
-            # one LLM response overlap in real time instead of head-of-line
-            # blocking on the previous tool. The drain loop after the stream
-            # ends consumes each tool's subagent events and result in start
-            # order, so the on-the-wire ChatTurnEvent sequence is identical
-            # to the old serial path.
-            pending_tools: list[
-                tuple[
-                    str,
-                    asyncio.Queue[Any],
-                    asyncio.Task[tuple[ToolUseBlock, ToolResultBlock]],
-                    list[str],
-                ]
-            ] = []
+            # Park each tool task as soon as its `tool_use_finished` arrives
+            # so multiple tool calls within one LLM response overlap. The
+            # drain loop after the stream ends consumes each tool's subagent
+            # events and result in start order, so the on-the-wire
+            # ChatTurnEvent sequence is identical to the old serial path.
+            pending_tools: list[_PendingTool] = []
 
             async for event in stream:
                 async for out in self._handle_event(event):
@@ -181,7 +179,14 @@ class ChatAgent:
                         # cross-contaminate their subagent event streams.
                         tool_task = asyncio.create_task(_exec_with_sentinel(current_tool))
 
-                    pending_tools.append((parent_tool_id, sub_queue, tool_task, list(current_text)))
+                    pending_tools.append(
+                        _PendingTool(
+                            parent_tool_id=parent_tool_id,
+                            sub_queue=sub_queue,
+                            task=tool_task,
+                            prior_text=list(current_text),
+                        )
+                    )
                     current_text.clear()
                     current_tool = None
                 elif event.type == "text_delta" and event.text:
@@ -189,8 +194,8 @@ class ChatAgent:
                 elif event.type == "usage" and event.usage:
                     tokens_used += event.usage.input_tokens + event.usage.output_tokens
                 elif event.type == "error":
-                    for _, _, parked_task, _ in pending_tools:
-                        parked_task.cancel()
+                    for parked in pending_tools:
+                        parked.task.cancel()
                     yield ChatTurnEvent(
                         type="error", payload={"message": event.error_message or ""}
                     )
@@ -198,23 +203,25 @@ class ChatAgent:
 
             # Drain each parked tool in start order: subagent events first,
             # then the tool's `tool_use_finished` and `tool_result` events.
-            for parent_tool_id, sub_queue, tool_task, prior_text in pending_tools:
+            for parked in pending_tools:
                 while True:
-                    item = await sub_queue.get()
+                    item = await parked.sub_queue.get()
                     if item is _QUEUE_DONE:
                         break
                     yield ChatTurnEvent(
                         type="subagent_event",
                         payload={
-                            "parent_tool_use_id": parent_tool_id,
+                            "parent_tool_use_id": parked.parent_tool_id,
                             "event": item,
                         },
                     )
 
-                block, result = await tool_task
+                block, result = await parked.task
                 assistant_blocks.append(block)
-                if prior_text:
-                    assistant_blocks.insert(0, TextBlock(type="text", text="".join(prior_text)))
+                if parked.prior_text:
+                    assistant_blocks.insert(
+                        0, TextBlock(type="text", text="".join(parked.prior_text))
+                    )
                 tool_results.append(result)
                 tool_calls_used += 1
                 if (
