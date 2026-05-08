@@ -15,7 +15,6 @@ import remarkGfm from "remark-gfm";
 
 import { useConversations } from "@/api/endpoints/conversations";
 import { documentRawUrl, uploadDocumentRequest } from "@/api/endpoints/documents";
-import { Tooltip } from "@/components/ui/tooltip";
 import { ChatAttachments, type ChatAttachment } from "@/features/chat/ChatAttachments";
 import { InlineProposals } from "@/features/chat/InlineProposals";
 import { ToolCallCard } from "@/features/chat/ToolCallCard";
@@ -23,6 +22,8 @@ import {
   useChatStream,
   type ChatAttachmentRef,
   type ChatTurn,
+  type ThinkingEntry,
+  type ToolEntry,
 } from "@/features/chat/ChatStreamProvider";
 import { MAX_UPLOAD_BYTES, formatBytes } from "@/features/documents/constants";
 import { DEFAULT_TREE_ID } from "@/lib/tree";
@@ -320,15 +321,16 @@ function ConversationSidebar({
 
 function Bubble({ turn }: { turn: ChatTurn }) {
   const isUser = turn.role === "user";
-  const toolCalls = turn.toolCalls ?? [];
+  const trace = turn.trace ?? [];
   const proposalIds = turn.proposalIds ?? [];
   const attachments = turn.attachments ?? [];
   const hasContent = !!turn.content;
-  const hasThinking = !!turn.thinking;
-  const hasTrace = hasThinking || toolCalls.length > 0;
-  const isQuiet = !hasContent && toolCalls.length === 0 && attachments.length === 0;
-  const runningTool = toolCalls.find((c) => c.status === "running");
-  const turnDone = !turn.pending;
+  const hasTrace = trace.length > 0;
+  const isQuiet = !hasContent && !hasTrace && attachments.length === 0;
+  const runningTool = trace.find(
+    (e): e is ToolEntry => e.kind === "tool" && e.status === "running",
+  );
+  const live = Boolean(turn.pending);
   return (
     <div
       className={cn(
@@ -340,21 +342,16 @@ function Bubble({ turn }: { turn: ChatTurn }) {
             : "rounded-bl-sm border border-border bg-card text-card-foreground",
       )}
     >
-      {!isUser && hasTrace && turnDone ? (
-        <CollapsedTrace thinking={turn.thinking ?? ""} toolCalls={toolCalls} />
-      ) : !isUser && hasTrace ? (
-        <>
-          {hasThinking ? (
-            <ThinkingPill text={turn.thinking ?? ""} live={Boolean(turn.pending)} />
-          ) : null}
-          {toolCalls.length > 0 ? (
-            <div className="mb-2 flex flex-col gap-1">
-              {toolCalls.map((call) => (
-                <ToolCallCard key={call.id} call={call} />
-              ))}
-            </div>
-          ) : null}
-        </>
+      {!isUser && hasTrace ? (
+        <div className="mb-2 flex flex-col gap-1">
+          {trace.map((entry) =>
+            entry.kind === "thinking" ? (
+              <ThinkingBlock key={entry.id} entry={entry} live={live} />
+            ) : (
+              <ToolCallCard key={entry.id} call={entry} />
+            ),
+          )}
+        </div>
       ) : null}
       {isUser && attachments.length > 0 ? <UserAttachments items={attachments} /> : null}
       {hasContent ? (
@@ -364,7 +361,7 @@ function Bubble({ turn }: { turn: ChatTurn }) {
           <Markdown content={turn.content} />
         )
       ) : turn.pending && isQuiet ? (
-        <PendingHero hasThinking={hasThinking} />
+        <PendingHero />
       ) : !isUser && isQuiet && !turn.pending ? (
         <span className="text-xs italic text-muted-foreground">(no response, try rephrasing)</span>
       ) : null}
@@ -418,35 +415,6 @@ function UserAttachments({ items }: { items: ChatAttachmentRef[] }) {
   );
 }
 
-function CollapsedTrace({
-  thinking,
-  toolCalls,
-}: {
-  thinking: string;
-  toolCalls: ChatTurn["toolCalls"];
-}) {
-  const calls = toolCalls ?? [];
-  const summary =
-    calls.length > 0
-      ? `Reasoned and used ${calls.length} tool${calls.length === 1 ? "" : "s"}`
-      : "Reasoning summary";
-  return (
-    <details className="group mb-2 rounded-md border border-border bg-muted/60 text-xs">
-      <summary className="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-muted-foreground marker:hidden">
-        <Brain className="h-3 w-3 text-amber-500" />
-        <span className="font-medium">{summary}</span>
-        <ChevronDown className="ml-auto h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-180" />
-      </summary>
-      <div className="space-y-1 border-t border-border p-2">
-        {thinking ? <ThinkingPill text={thinking} live={false} /> : null}
-        {calls.map((call) => (
-          <ToolCallCard key={call.id} call={call} />
-        ))}
-      </div>
-    </details>
-  );
-}
-
 function BusyFooter({
   runningToolName,
   isStreamingText,
@@ -467,43 +435,55 @@ function BusyFooter({
   );
 }
 
-function ThinkingPill({ text, live }: { text: string; live: boolean }) {
-  // While the turn is streaming, show the full reasoning summary in a
-  // scrollable panel so the user can read what the model is actually
-  // working through. After the turn completes, collapse to the last few
-  // lines so old turns stay compact in the scrollback.
-  if (live) {
-    return (
-      <Tooltip
-        content="OpenAI's reasoning summary while it deliberates. Raw thinking is never persisted; only the summary is shown."
-        side="bottom"
-      >
-        <div className="mb-2 flex w-full max-h-40 items-start gap-1.5 overflow-y-auto rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-900 cursor-help animate-pulse dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-          <Brain className="mt-[1px] h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400" />
-          <span className="whitespace-pre-wrap break-words">{text || "Thinking..."}</span>
-        </div>
-      </Tooltip>
-    );
-  }
-  const tail = text.split(/\n+/).filter(Boolean).slice(-3).join(" · ");
+function ThinkingBlock({ entry, live }: { entry: ThinkingEntry; live: boolean }) {
+  // Each thinking burst is its own collapsible. Default to open while the
+  // turn is still streaming so the user can read along; default to closed
+  // after the turn completes so the bubble stays compact. After mount the
+  // state is uncontrolled so a click toggle never fights re-renders.
+  const [open, setOpen] = useState(live);
+  const firstLine = entry.text.split(/\n+/).find((line) => line.trim().length > 0) ?? "";
   return (
-    <Tooltip
-      content="OpenAI's reasoning summary while it deliberates. Raw thinking is never persisted; only the summary is shown."
-      side="bottom"
+    <details
+      open={open}
+      onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}
+      className="group rounded-md border border-amber-200 bg-amber-50 text-xs dark:border-amber-900 dark:bg-amber-950/40"
     >
-      <div className="mb-2 inline-flex max-w-full items-start gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-900 cursor-help dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-        <Brain className="mt-[1px] h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400" />
-        <span className="line-clamp-3 break-words">{tail || "Thinking..."}</span>
+      <summary
+        className="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-amber-900 marker:hidden dark:text-amber-200"
+        title="Reasoning summary while the model deliberates. Raw thinking is never persisted; only the summary is shown."
+      >
+        <Brain
+          className={cn(
+            "h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400",
+            live ? "animate-pulse" : "",
+          )}
+        />
+        <span className="font-medium">Thinking</span>
+        {firstLine ? (
+          <span className="min-w-0 flex-1 truncate text-amber-800/70 dark:text-amber-200/60">
+            {firstLine}
+          </span>
+        ) : (
+          <span className="flex-1" />
+        )}
+        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-amber-600 transition-transform group-open:rotate-180 dark:text-amber-400" />
+      </summary>
+      <div className="border-t border-amber-200 px-2.5 py-2 text-amber-900 dark:border-amber-900 dark:text-amber-200">
+        {entry.text ? (
+          <Markdown content={entry.text} />
+        ) : (
+          <span className="italic opacity-70">Thinking...</span>
+        )}
       </div>
-    </Tooltip>
+    </details>
   );
 }
 
-function PendingHero({ hasThinking }: { hasThinking: boolean }) {
+function PendingHero() {
   return (
     <span className="inline-flex items-center gap-2 text-muted-foreground">
       <Loader2 className="h-3 w-3 animate-spin text-primary" />
-      <span className="text-xs">{hasThinking ? "Working on it..." : "Thinking..."}</span>
+      <span className="text-xs">Thinking...</span>
     </span>
   );
 }
