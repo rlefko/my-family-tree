@@ -30,6 +30,7 @@ from my_family_tree.llm.base import (
     ContentBlock,
     ImageBlock,
     Message as LLMMessage,
+    ReasoningConfig,
     TextBlock,
     ToolResultBlock,
     ToolUseBlock,
@@ -228,11 +229,19 @@ def _agent_for_request(
         subagent_runner=TraversalSubagentRunner(provider=provider, model=model),
     )
     host = ToolHost(get_registry(), context=ctx, settings=get_settings())
+    # Trade thoroughness for latency on the user-facing chat: low reasoning
+    # effort still lets the model deliberate when a turn is genuinely
+    # ambiguous, and a tighter output cap keeps OpenAI from burning a 30K
+    # reasoning budget on routine factual entries. The traversal subagent
+    # keeps the thorough ChatAgent defaults since deep walks benefit from
+    # both knobs being higher.
     return ChatAgent(
         provider=provider,
         model=model,
         host=host,
         budgets=Budgets(),
+        reasoning=ReasoningConfig(effort="low"),
+        max_output_tokens=12288,
     )
 
 
