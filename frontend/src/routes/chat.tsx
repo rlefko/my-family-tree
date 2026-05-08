@@ -347,13 +347,7 @@ function Bubble({ turn }: { turn: ChatTurn }) {
       {!isUser && hasTrace ? (
         live ? (
           <div className="mb-2 flex flex-col gap-1">
-            {trace.map((entry) =>
-              entry.kind === "thinking" ? (
-                <ThinkingBlock key={entry.id} entry={entry} live={true} />
-              ) : (
-                <ToolCallCard key={entry.id} call={entry} />
-              ),
-            )}
+            <TraceEntries entries={trace} live />
           </div>
         ) : (
           <CollapsedTrace trace={trace} />
@@ -497,15 +491,23 @@ function CollapsedTrace({ trace }: { trace: TraceEntry[] }) {
         <ChevronDown className="ml-auto h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-180" />
       </summary>
       <div className="flex flex-col gap-1 border-t border-border p-2">
-        {trace.map((entry) =>
-          entry.kind === "thinking" ? (
-            <ThinkingBlock key={entry.id} entry={entry} live={false} />
-          ) : (
-            <ToolCallCard key={entry.id} call={entry} />
-          ),
-        )}
+        <TraceEntries entries={trace} live={false} />
       </div>
     </details>
+  );
+}
+
+function TraceEntries({ entries, live }: { entries: TraceEntry[]; live: boolean }) {
+  return (
+    <>
+      {entries.map((entry) =>
+        entry.kind === "thinking" ? (
+          <ThinkingBlock key={entry.id} entry={entry} live={live} />
+        ) : (
+          <ToolCallCard key={entry.id} call={entry} />
+        ),
+      )}
+    </>
   );
 }
 
