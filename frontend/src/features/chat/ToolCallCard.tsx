@@ -16,6 +16,7 @@ import {
   UserPlus,
   Users,
 } from "lucide-react";
+import { useState } from "react";
 
 import { Markdown } from "@/components/Markdown";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -133,6 +134,7 @@ function previewFor(call: ToolCall): string | null {
 }
 
 export function ToolCallCard({ call }: { call: ToolCall }) {
+  const [open, setOpen] = useState(false);
   const hasInput = call.input !== undefined && call.input !== null;
   const hasOutput = call.output !== undefined && call.output !== null;
   const preview = previewFor(call);
@@ -142,7 +144,11 @@ export function ToolCallCard({ call }: { call: ToolCall }) {
   const subagentSummary = call.subagentSummary ?? "";
   const subagentPersons = isSubagent ? subagentPersonsFrom(call.output) : [];
   return (
-    <details className="group rounded-md border border-border bg-muted/60 px-2.5 py-1.5 text-xs">
+    <details
+      open={open}
+      onToggle={(e) => setOpen(e.currentTarget.open)}
+      className="rounded-md border border-border bg-muted/60 px-2.5 py-1.5 text-xs"
+    >
       <summary className="flex cursor-pointer items-center gap-2 text-foreground marker:hidden">
         <ToolIcon name={call.name} />
         <span className="font-mono">{call.name}</span>
@@ -162,7 +168,12 @@ export function ToolCallCard({ call }: { call: ToolCall }) {
           <StatusIcon status={call.status} />
           {STATUS_LABEL[call.status]}
         </span>
-        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+        <ChevronDown
+          className={cn(
+            "h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform",
+            open && "rotate-180",
+          )}
+        />
       </summary>
       {citations.length > 0 ? <Citations hits={citations} /> : null}
       {isSubagent ? (
