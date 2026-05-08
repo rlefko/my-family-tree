@@ -16,6 +16,7 @@ import pytest
 
 from my_family_tree.agent.budgets import Budgets
 from my_family_tree.agent.loop import ChatAgent
+from my_family_tree.agent.subagent_events import get_subagent_event_sink
 from my_family_tree.api.routers.chat import _assistant_messages_from_content
 from my_family_tree.llm.base import (
     Message,
@@ -378,8 +379,6 @@ async def test_subagent_events_emitted_to_parent_with_parent_tool_use_id() -> No
     parent's `tool_use_finished` and `tool_result` events. This is the
     proof-of-work plumbing that lets the chat UI render the inner trace
     inside the parent's tool card."""
-    from my_family_tree.agent.subagent_events import get_subagent_event_sink
-
     args = {"question": "who are X's sons?"}
     args_json = json.dumps(args)
     first_turn = [
@@ -398,9 +397,7 @@ async def test_subagent_events_emitted_to_parent_with_parent_tool_use_id() -> No
             sink = get_subagent_event_sink()
             assert sink is not None, "loop should install a sink before awaiting the tool"
             sink.emit({"type": "text_delta", "text": "inner work"})
-            sink.emit(
-                {"type": "tool_use_started", "id": "inner_t1", "name": "person_relations"}
-            )
+            sink.emit({"type": "tool_use_started", "id": "inner_t1", "name": "person_relations"})
             sink.emit(
                 {
                     "type": "tool_result",
