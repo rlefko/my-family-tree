@@ -18,6 +18,7 @@ from my_family_tree.agent.subagent_events import (
 from my_family_tree.agent.system_prompt import CHAT_SYSTEM_PROMPT
 from my_family_tree.core.logging import get_logger
 from my_family_tree.llm.base import (
+    CacheConfig,
     LLMProvider,
     Message,
     ReasoningConfig,
@@ -45,6 +46,16 @@ class _QueueSink:
 
     def emit(self, event: dict[str, Any]) -> None:
         self._queue.put_nowait(event)
+
+
+@dataclass(slots=True)
+class _PendingTool:
+    """One in-flight tool call parked while the LLM stream is still open."""
+
+    parent_tool_id: str
+    sub_queue: asyncio.Queue[Any]
+    task: asyncio.Task[tuple[ToolUseBlock, ToolResultBlock]]
+    prior_text: list[str]
 
 
 log = get_logger(__name__)
@@ -77,6 +88,10 @@ class ChatAgent:
     budgets: Budgets = field(default_factory=Budgets)
     system_prompt: str = CHAT_SYSTEM_PROMPT
     reasoning: ReasoningConfig = field(default_factory=lambda: ReasoningConfig(effort="medium"))
+    # OpenAI handles prompt caching automatically and ignores this; the
+    # default exists so the Anthropic provider gets free system-prompt and
+    # tool-catalog caching every turn without a provider-specific branch.
+    cache: CacheConfig = field(default_factory=CacheConfig)
     # Per-call cap. The same budget covers reasoning, text, and tool-call
     # argument JSON, so smaller defaults like 4096 routinely truncated long
     # `note_create(body=...)` calls mid-stream and left the loop with
@@ -122,7 +137,15 @@ class ChatAgent:
                 tools=tool_specs,
                 max_tokens=self.max_output_tokens,
                 reasoning=self.reasoning,
+                cache=self.cache,
             )
+            # Park each tool task as soon as its `tool_use_finished` arrives
+            # so multiple tool calls within one LLM response overlap. The
+            # drain loop after the stream ends consumes each tool's subagent
+            # events and result in start order, so the on-the-wire
+            # ChatTurnEvent sequence is identical to the old serial path.
+            pending_tools: list[_PendingTool] = []
+
             async for event in stream:
                 async for out in self._handle_event(event):
                     yield out
@@ -151,82 +174,98 @@ class ChatAgent:
                     with subagent_event_sink_scope(sink):
                         # The task snapshots the contextvar at create_task
                         # time, so it carries the sink even after the with
-                        # block resets the parent context.
+                        # block resets the parent context. Each pending task
+                        # has its own queue, so concurrent tasks never
+                        # cross-contaminate their subagent event streams.
                         tool_task = asyncio.create_task(_exec_with_sentinel(current_tool))
 
-                    while True:
-                        item = await sub_queue.get()
-                        if item is _QUEUE_DONE:
-                            break
-                        yield ChatTurnEvent(
-                            type="subagent_event",
-                            payload={
-                                "parent_tool_use_id": parent_tool_id,
-                                "event": item,
-                            },
+                    pending_tools.append(
+                        _PendingTool(
+                            parent_tool_id=parent_tool_id,
+                            sub_queue=sub_queue,
+                            task=tool_task,
+                            prior_text=list(current_text),
                         )
-
-                    block, result = await tool_task
-                    assistant_blocks.append(block)
-                    if current_text:
-                        assistant_blocks.insert(
-                            0, TextBlock(type="text", text="".join(current_text))
-                        )
-                        current_text.clear()
-                    tool_results.append(result)
-                    tool_calls_used += 1
-                    if (
-                        not result.is_error
-                        and isinstance(result.output, dict)
-                        and result.output.get("proposal_id") is not None
-                    ):
-                        proposal_ids.append(str(result.output["proposal_id"]))
-                    if (
-                        block.name == "request_user_input"
-                        and not result.is_error
-                        and pending_user_input is None
-                    ):
-                        # Snapshot the question/options from the parsed input so
-                        # we can emit `needs_input` once the provider stream
-                        # closes; if the model issued additional tool calls in
-                        # the same turn we still want them to execute and
-                        # persist before we halt.
-                        pending_user_input = {
-                            "question": block.input.get("reason") or "",
-                            "options": block.input.get("options"),
-                            "schema_hint": block.input.get("schema_hint"),
-                        }
-                    # Re-emit `tool_use_finished` with the parsed input now
-                    # that we have it; this is what the chat UI shows in the
-                    # tool-call card. The earlier bare `tool_use_finished`
-                    # already fired from `_handle_event`; this one carries
-                    # the same id plus the input payload.
-                    yield ChatTurnEvent(
-                        type="tool_use_finished",
-                        payload={
-                            "id": block.id,
-                            "name": block.name,
-                            "input": block.input,
-                        },
                     )
-                    yield ChatTurnEvent(
-                        type="tool_result",
-                        payload={
-                            "tool_use_id": result.tool_use_id,
-                            "output": result.output,
-                            "is_error": result.is_error,
-                        },
-                    )
+                    current_text.clear()
                     current_tool = None
                 elif event.type == "text_delta" and event.text:
                     current_text.append(event.text)
                 elif event.type == "usage" and event.usage:
                     tokens_used += event.usage.input_tokens + event.usage.output_tokens
                 elif event.type == "error":
+                    for parked in pending_tools:
+                        parked.task.cancel()
                     yield ChatTurnEvent(
                         type="error", payload={"message": event.error_message or ""}
                     )
                     return
+
+            # Drain each parked tool in start order: subagent events first,
+            # then the tool's `tool_use_finished` and `tool_result` events.
+            for parked in pending_tools:
+                while True:
+                    item = await parked.sub_queue.get()
+                    if item is _QUEUE_DONE:
+                        break
+                    yield ChatTurnEvent(
+                        type="subagent_event",
+                        payload={
+                            "parent_tool_use_id": parked.parent_tool_id,
+                            "event": item,
+                        },
+                    )
+
+                block, result = await parked.task
+                assistant_blocks.append(block)
+                if parked.prior_text:
+                    assistant_blocks.insert(
+                        0, TextBlock(type="text", text="".join(parked.prior_text))
+                    )
+                tool_results.append(result)
+                tool_calls_used += 1
+                if (
+                    not result.is_error
+                    and isinstance(result.output, dict)
+                    and result.output.get("proposal_id") is not None
+                ):
+                    proposal_ids.append(str(result.output["proposal_id"]))
+                if (
+                    block.name == "request_user_input"
+                    and not result.is_error
+                    and pending_user_input is None
+                ):
+                    # Snapshot the question/options from the parsed input so
+                    # we can emit `needs_input` once the provider stream
+                    # closes; if the model issued additional tool calls in
+                    # the same turn we still want them to execute and
+                    # persist before we halt.
+                    pending_user_input = {
+                        "question": block.input.get("reason") or "",
+                        "options": block.input.get("options"),
+                        "schema_hint": block.input.get("schema_hint"),
+                    }
+                # Re-emit `tool_use_finished` with the parsed input now that
+                # we have it; this is what the chat UI shows in the tool-call
+                # card. The earlier bare `tool_use_finished` already fired
+                # from `_handle_event`; this one carries the same id plus the
+                # input payload.
+                yield ChatTurnEvent(
+                    type="tool_use_finished",
+                    payload={
+                        "id": block.id,
+                        "name": block.name,
+                        "input": block.input,
+                    },
+                )
+                yield ChatTurnEvent(
+                    type="tool_result",
+                    payload={
+                        "tool_use_id": result.tool_use_id,
+                        "output": result.output,
+                        "is_error": result.is_error,
+                    },
+                )
 
             if current_text:
                 assistant_blocks.append(TextBlock(type="text", text="".join(current_text)))

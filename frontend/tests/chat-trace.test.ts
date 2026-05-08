@@ -15,6 +15,7 @@ import {
   type ToolEntry,
   type TraceEntry,
 } from "@/features/chat/ChatStreamProvider";
+import { stripInlineMarkdown } from "@/features/chat/Trace";
 
 function emptyTurn(): ChatTurn {
   return {
@@ -138,5 +139,50 @@ describe("traceSummary", () => {
 
   it("falls back to the reasoning-only label on an empty trace", () => {
     expect(traceSummary([])).toBe("Reasoning summary");
+  });
+});
+
+describe("stripInlineMarkdown", () => {
+  it("unwraps bold markers", () => {
+    expect(stripInlineMarkdown("**Considering options**")).toBe("Considering options");
+    expect(stripInlineMarkdown("__bold__")).toBe("bold");
+  });
+
+  it("unwraps italic markers", () => {
+    expect(stripInlineMarkdown("*hmm*")).toBe("hmm");
+    expect(stripInlineMarkdown("_softly_")).toBe("softly");
+  });
+
+  it("unwraps inline code", () => {
+    expect(stripInlineMarkdown("look at `person_search` first")).toBe(
+      "look at person_search first",
+    );
+  });
+
+  it("strips a leading heading prefix", () => {
+    expect(stripInlineMarkdown("# Plan ahead")).toBe("Plan ahead");
+    expect(stripInlineMarkdown("### Step three")).toBe("Step three");
+  });
+
+  it("strips a leading list-bullet prefix", () => {
+    expect(stripInlineMarkdown("- first item")).toBe("first item");
+    expect(stripInlineMarkdown("* dash")).toBe("dash");
+    expect(stripInlineMarkdown("+ plus")).toBe("plus");
+  });
+
+  it("passes plain text through unchanged", () => {
+    expect(stripInlineMarkdown("Just searching for Jane Doe.")).toBe(
+      "Just searching for Jane Doe.",
+    );
+  });
+
+  it("trims surrounding whitespace", () => {
+    expect(stripInlineMarkdown("   spaced   ")).toBe("spaced");
+  });
+
+  it("handles mixed inline markers", () => {
+    expect(stripInlineMarkdown("**Considering** *carefully* the `person_search` results")).toBe(
+      "Considering carefully the person_search results",
+    );
   });
 });

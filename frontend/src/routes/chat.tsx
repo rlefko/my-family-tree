@@ -15,7 +15,7 @@ import { documentRawUrl, uploadDocumentRequest } from "@/api/endpoints/documents
 import { Markdown } from "@/components/Markdown";
 import { ChatAttachments, type ChatAttachment } from "@/features/chat/ChatAttachments";
 import { InlineProposals } from "@/features/chat/InlineProposals";
-import { CollapsedTrace, TraceEntries } from "@/features/chat/Trace";
+import { Trace } from "@/features/chat/Trace";
 import {
   useChatStream,
   type ChatAttachmentRef,
@@ -356,15 +356,7 @@ function Bubble({ turn, isLatestAssistant }: { turn: ChatTurn; isLatestAssistant
             : "rounded-bl-sm border border-border bg-card text-card-foreground",
       )}
     >
-      {!isUser && hasTrace ? (
-        live ? (
-          <div className="mb-2 flex flex-col gap-1">
-            <TraceEntries entries={trace} live />
-          </div>
-        ) : (
-          <CollapsedTrace trace={trace} />
-        )
-      ) : null}
+      {!isUser && hasTrace ? <Trace trace={trace} live={live} /> : null}
       {isUser && attachments.length > 0 ? <UserAttachments items={attachments} /> : null}
       {hasContent ? (
         isUser ? (

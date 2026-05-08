@@ -7,6 +7,7 @@ results back through the next provider invocation."""
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import AsyncIterator, Iterable
 from dataclasses import dataclass, field
@@ -457,6 +458,84 @@ async def test_loop_handles_tool_with_no_subagent_events_cleanly() -> None:
     assert [e[0] for e in events if e[0] == "subagent_event"] == []
     assert "tool_result" in [e[0] for e in events]
     assert "done" in [e[0] for e in events]
+
+
+@pytest.mark.unit
+async def test_two_tools_in_one_stream_run_concurrently() -> None:
+    """When the model emits two tool calls in a single LLM response, the
+    agent should park each task as its `tool_use_finished` arrives so they
+    overlap, instead of head-of-line blocking on the first one. We gate
+    each fake `host.call` on its own `asyncio.Event` and assert both have
+    entered `host.call` concurrently before either gate releases. We then
+    release the gates in reverse order and confirm the re-emitted
+    `tool_use_finished` and `tool_result` events still land in start order."""
+    args_a_json = json.dumps({"query": "Anna"})
+    args_b_json = json.dumps({"query": "Bill"})
+    first_turn = [
+        _tool_started("call_a", "person_search"),
+        _tool_input("call_a", args_a_json),
+        _tool_finished("call_a"),
+        _tool_started("call_b", "person_search"),
+        _tool_input("call_b", args_b_json),
+        _tool_finished("call_b"),
+        _usage(),
+        _done(),
+    ]
+    second_turn = [_text("done"), _done()]
+
+    gate_a = asyncio.Event()
+    gate_b = asyncio.Event()
+    started_a = asyncio.Event()
+    started_b = asyncio.Event()
+
+    class _GatedHost(FakeHost):
+        async def call(self, name: str, payload: dict[str, Any]) -> Any:
+            self.calls.append((name, payload))
+            query = payload.get("query")
+            if query == "Anna":
+                started_a.set()
+                await gate_a.wait()
+            elif query == "Bill":
+                started_b.set()
+                await gate_b.wait()
+            return _SearchHit()
+
+    provider = FakeProvider(scripts=[first_turn, second_turn])
+    host = _GatedHost()
+    agent = ChatAgent(provider=provider, model="m", host=host, budgets=Budgets())
+
+    events: list[tuple[str, dict[str, Any]]] = []
+
+    async def _consume() -> None:
+        async for evt in agent.run_turn(_initial_messages()):
+            events.append((evt.type, evt.payload))
+
+    consumer = asyncio.create_task(_consume())
+    try:
+        # If the loop were serial, the second `started_*` event would not
+        # fire until the first gate released, so this `wait_for` pair would
+        # time out.
+        await asyncio.wait_for(started_a.wait(), timeout=2.0)
+        await asyncio.wait_for(started_b.wait(), timeout=2.0)
+        # Release in reverse order to confirm the drain still emits the
+        # re-emitted `tool_use_finished` events in start order.
+        gate_b.set()
+        gate_a.set()
+        await asyncio.wait_for(consumer, timeout=5.0)
+    finally:
+        if not consumer.done():
+            consumer.cancel()
+
+    queries = sorted(payload.get("query") for _, payload in host.calls)
+    assert queries == ["Anna", "Bill"]
+
+    finished_with_input = [
+        payload for typ, payload in events if typ == "tool_use_finished" and "input" in payload
+    ]
+    assert [p["id"] for p in finished_with_input] == ["call_a", "call_b"]
+
+    tool_results = [payload for typ, payload in events if typ == "tool_result"]
+    assert [p["tool_use_id"] for p in tool_results] == ["call_a", "call_b"]
 
 
 @pytest.mark.unit
