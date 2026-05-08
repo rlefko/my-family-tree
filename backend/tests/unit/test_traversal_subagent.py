@@ -16,6 +16,7 @@ from uuid import UUID, uuid4
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from my_family_tree.agent.subagent_events import subagent_event_sink_scope
 from my_family_tree.agent.traversal_subagent import (
     SubagentRunner,
     TraversalSubagentResult,
@@ -83,6 +84,151 @@ async def test_run_traversal_subagent_records_token_usage() -> None:
     )
     assert result.tokens_used == 50
     assert result.tool_calls_used == 0
+
+
+@pytest.mark.unit
+async def test_run_traversal_subagent_persists_text_in_trace() -> None:
+    """Contiguous text deltas coalesce into a single text trace entry; the
+    summary keeps the full text so the tool result carries both shapes."""
+    provider = _FakeProvider(
+        scripts=[
+            [_text("Found "), _text("two sons."), _usage(), _done()],
+        ]
+    )
+    result = await run_traversal_subagent(
+        question="?",
+        person_id=uuid4(),
+        max_generations=1,
+        provider=cast(Any, provider),
+        model="m",
+        parent_ctx=_parent_ctx(),
+    )
+    assert result.trace == [{"type": "text", "text": "Found two sons."}]
+
+
+@pytest.mark.unit
+async def test_run_traversal_subagent_persists_thinking_in_trace() -> None:
+    """Thinking deltas coalesce into a thinking entry distinct from text; the
+    user opted into persisting thinking so old turns rehydrate with the
+    subagent's reasoning visible."""
+    provider = _FakeProvider(
+        scripts=[
+            [
+                StreamEvent(type="thinking_delta", text="Let me check "),
+                StreamEvent(type="thinking_delta", text="the parents."),
+                _text("Done."),
+                _usage(),
+                _done(),
+            ],
+        ]
+    )
+    result = await run_traversal_subagent(
+        question="?",
+        person_id=uuid4(),
+        max_generations=1,
+        provider=cast(Any, provider),
+        model="m",
+        parent_ctx=_parent_ctx(),
+    )
+    assert result.trace[0] == {"type": "thinking", "text": "Let me check the parents."}
+    assert result.trace[1] == {"type": "text", "text": "Done."}
+
+
+@pytest.mark.unit
+async def test_run_traversal_subagent_records_open_tool_when_stream_truncates() -> None:
+    """If a stream emits `tool_use_started` and an input delta but ends
+    before the loop finishes the call, the trace still carries a tool entry
+    with the name set so the parent UI can show the partial proof of work
+    (input/output stay None)."""
+    provider = _FakeProvider(
+        scripts=[
+            [
+                StreamEvent(
+                    type="tool_use_started",
+                    tool_use_id="t1",
+                    tool_name="person_search",
+                ),
+                StreamEvent(
+                    type="tool_use_input_delta",
+                    tool_use_id="t1",
+                    tool_input_delta='{"query":"Anna"}',
+                ),
+            ],
+        ]
+    )
+    result = await run_traversal_subagent(
+        question="?",
+        person_id=uuid4(),
+        max_generations=1,
+        provider=cast(Any, provider),
+        model="m",
+        parent_ctx=_parent_ctx(),
+    )
+    assert len(result.trace) == 1
+    entry = result.trace[0]
+    assert entry["type"] == "tool_use"
+    assert entry["name"] == "person_search"
+    assert entry["input"] is None
+    assert entry["output"] is None
+
+
+@pytest.mark.unit
+async def test_run_traversal_subagent_emits_events_to_sink() -> None:
+    """When a sink is installed via `subagent_event_sink_scope`, every inner
+    text and thinking delta is forwarded so the parent loop can stream the
+    proof of work to the UI as it happens."""
+    provider = _FakeProvider(
+        scripts=[
+            [
+                StreamEvent(type="thinking_delta", text="reasoning"),
+                _text("Found 2."),
+                _usage(),
+                _done(),
+            ],
+        ]
+    )
+    captured: list[dict[str, Any]] = []
+
+    class _CapturingSink:
+        def emit(self, event: dict[str, Any]) -> None:
+            captured.append(event)
+
+    with subagent_event_sink_scope(_CapturingSink()):
+        await run_traversal_subagent(
+            question="?",
+            person_id=uuid4(),
+            max_generations=1,
+            provider=cast(Any, provider),
+            model="m",
+            parent_ctx=_parent_ctx(),
+        )
+
+    types = [c["type"] for c in captured]
+    assert "thinking_delta" in types
+    assert "text_delta" in types
+    # Order is preserved.
+    assert types.index("thinking_delta") < types.index("text_delta")
+
+
+@pytest.mark.unit
+async def test_run_traversal_subagent_works_without_a_sink() -> None:
+    """No sink installed: runner still records the trace and returns a
+    well-formed result. Proves the contextvar default doesn't blow up."""
+    provider = _FakeProvider(
+        scripts=[
+            [_text("ok"), _usage(), _done()],
+        ]
+    )
+    result = await run_traversal_subagent(
+        question="?",
+        person_id=uuid4(),
+        max_generations=1,
+        provider=cast(Any, provider),
+        model="m",
+        parent_ctx=_parent_ctx(),
+    )
+    assert result.summary == "ok"
+    assert result.trace == [{"type": "text", "text": "ok"}]
 
 
 @pytest.mark.unit

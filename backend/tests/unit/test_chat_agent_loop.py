@@ -372,6 +372,97 @@ async def test_request_user_input_lets_earlier_tools_complete_before_pausing() -
 
 
 @pytest.mark.unit
+async def test_subagent_events_emitted_to_parent_with_parent_tool_use_id() -> None:
+    """A tool that emits via the subagent event sink must surface those events
+    on the parent loop's stream tagged with the parent tool's id, BEFORE the
+    parent's `tool_use_finished` and `tool_result` events. This is the
+    proof-of-work plumbing that lets the chat UI render the inner trace
+    inside the parent's tool card."""
+    from my_family_tree.agent.subagent_events import get_subagent_event_sink
+
+    args = {"question": "who are X's sons?"}
+    args_json = json.dumps(args)
+    first_turn = [
+        _tool_started("call_outer", "traverse_and_summarize"),
+        _tool_input("call_outer", args_json),
+        _tool_finished("call_outer"),
+        _usage(),
+        _done(),
+    ]
+    second_turn = [_text("Done."), _usage(), _done()]
+    provider = FakeProvider(scripts=[first_turn, second_turn])
+
+    class _EmittingHost(FakeHost):
+        async def call(self, name: str, payload: dict[str, Any]) -> Any:
+            self.calls.append((name, payload))
+            sink = get_subagent_event_sink()
+            assert sink is not None, "loop should install a sink before awaiting the tool"
+            sink.emit({"type": "text_delta", "text": "inner work"})
+            sink.emit(
+                {"type": "tool_use_started", "id": "inner_t1", "name": "person_relations"}
+            )
+            sink.emit(
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "inner_t1",
+                    "output": {"results": []},
+                    "is_error": False,
+                }
+            )
+            return _ProposalRefLike()
+
+    host = _EmittingHost()
+    agent = ChatAgent(provider=provider, model="m", host=host, budgets=Budgets())
+
+    events: list[tuple[str, dict[str, Any]]] = []
+    async for evt in agent.run_turn(_initial_messages()):
+        events.append((evt.type, evt.payload))
+
+    sub_events = [e for e in events if e[0] == "subagent_event"]
+    # Three inner events: text_delta, tool_use_started, tool_result.
+    assert len(sub_events) == 3
+    for _, payload in sub_events:
+        assert payload["parent_tool_use_id"] == "call_outer"
+    inner_types = [p["event"]["type"] for _, p in sub_events]
+    assert inner_types == ["text_delta", "tool_use_started", "tool_result"]
+
+    # All subagent_event entries arrive before the parent tool_result so the
+    # frontend can attach them to the right tool card.
+    sub_idx = [i for i, (t, _) in enumerate(events) if t == "subagent_event"]
+    parent_result_idx = next(i for i, (t, _) in enumerate(events) if t == "tool_result")
+    assert max(sub_idx) < parent_result_idx
+
+
+@pytest.mark.unit
+async def test_loop_handles_tool_with_no_subagent_events_cleanly() -> None:
+    """A regular tool (no sink emissions) must not deadlock on the per-call
+    event queue. The sentinel pushed in the task's `finally` is the only
+    item the drainer sees, so it breaks immediately and the tool result
+    flows through normally."""
+    args = {"display_name": "Anna Doe"}
+    args_json = json.dumps(args)
+    first_turn = [
+        _tool_started("call_1", "person_propose_create"),
+        _tool_input("call_1", args_json),
+        _tool_finished("call_1"),
+        _usage(),
+        _done(),
+    ]
+    second_turn = [_text("Queued."), _usage(), _done()]
+    provider = FakeProvider(scripts=[first_turn, second_turn])
+    host = FakeHost(next_outputs=[_ProposalRefLike(proposal_id="aaa")])
+    agent = ChatAgent(provider=provider, model="m", host=host, budgets=Budgets())
+
+    events: list[tuple[str, dict[str, Any]]] = []
+    async for evt in agent.run_turn(_initial_messages()):
+        events.append((evt.type, evt.payload))
+
+    assert [e[0] for e in events if e[0] == "subagent_event"] == []
+    assert "tool_result" in [e[0] for e in events]
+    assert "done" in [e[0] for e in events]
+
+
+@pytest.mark.unit
 async def test_second_turn_sees_prior_tool_history_via_rehydrated_messages() -> None:
     """The bug being fixed: each turn used to start blind because
     `_history_messages` stripped tool calls when reloading the conversation.
