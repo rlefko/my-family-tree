@@ -207,3 +207,43 @@ async def test_tool_error_marks_result_as_error_and_continues() -> None:
     assert "kaboom" in str(tool_result["output"])
     done = next(e[1] for e in events if e[0] == "done")
     assert done["proposal_ids"] == []  # error tool never contributes a proposal id
+
+
+@pytest.mark.unit
+async def test_tool_with_malformed_json_input_surfaces_real_error_without_host_call() -> None:
+    """When the model's tool-call argument JSON arrives truncated (typically
+    because `max_output_tokens` cut the stream off mid-string), the agent must
+    NOT hand the garbage to the host. Instead it should emit an `is_error=True`
+    tool_result whose output names the likely cause so the agent can recover
+    on the next pass with a shorter payload."""
+    first_turn = [
+        _tool_started("call_1", "person_propose_create"),
+        # Deliberately missing the closing brace, so json.loads raises.
+        _tool_input("call_1", '{"display_name": "Jane Doe"'),
+        _tool_finished("call_1"),
+        _usage(),
+        _done(),
+    ]
+    second_turn = [_text("retrying with a smaller payload"), _done()]
+    provider = FakeProvider(scripts=[first_turn, second_turn])
+    host = FakeHost()
+    agent = ChatAgent(provider=provider, model="m", host=host, budgets=Budgets())
+
+    events = []
+    async for evt in agent.run_turn(_initial_messages()):
+        events.append((evt.type, evt.payload))
+
+    # The host was never invoked with the half-parsed JSON.
+    assert host.calls == []
+
+    tool_result = next(e[1] for e in events if e[0] == "tool_result")
+    assert tool_result["is_error"] is True
+    error_text = str(tool_result["output"]).lower()
+    assert "max_output_tokens" in error_text or "truncated" in error_text
+
+    # The error result is threaded back into history so the model has a chance
+    # to react on the next provider call.
+    assert len(provider.seen_messages) == 2
+    second_history = provider.seen_messages[1]
+    assert any(m.role == "assistant" for m in second_history)
+    assert any(m.role == "tool" for m in second_history)
