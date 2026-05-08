@@ -283,7 +283,20 @@ function pickPrimaryUnions(
   coupleEventByPair: Map<string, { date?: string | null; place?: string | null; type: string }>,
 ): Map<string, string> {
   const childrenOfUnion = new Map<string, number>();
-  for (const u of couples.values()) childrenOfUnion.set(u.id, 0);
+  const yearOfUnion = new Map<string, number | null>();
+  const unionsOf = new Map<string, string[]>();
+
+  for (const u of couples.values()) {
+    childrenOfUnion.set(u.id, 0);
+    const ev = coupleEventByPair.get(`${couplesKey(u.a, u.b)}:marriage`);
+    yearOfUnion.set(u.id, parseYear(ev?.date));
+    for (const personId of [u.a, u.b]) {
+      const list = unionsOf.get(personId) ?? [];
+      list.push(u.id);
+      unionsOf.set(personId, list);
+    }
+  }
+
   for (const [, parentList] of parents) {
     if (parentList.length < 2) continue;
     for (let i = 0; i < parentList.length; i++) {
@@ -292,26 +305,6 @@ function pickPrimaryUnions(
         if (!u) continue;
         childrenOfUnion.set(u.id, (childrenOfUnion.get(u.id) ?? 0) + 1);
       }
-    }
-  }
-
-  const yearOfUnion = new Map<string, number | null>();
-  for (const u of couples.values()) {
-    const ev = coupleEventByPair.get(`${couplesKey(u.a, u.b)}:marriage`);
-    const date = ev?.date ?? null;
-    if (!date) {
-      yearOfUnion.set(u.id, null);
-      continue;
-    }
-    yearOfUnion.set(u.id, parseYear(date));
-  }
-
-  const unionsOf = new Map<string, string[]>();
-  for (const u of couples.values()) {
-    for (const personId of [u.a, u.b]) {
-      const list = unionsOf.get(personId) ?? [];
-      list.push(u.id);
-      unionsOf.set(personId, list);
     }
   }
 
