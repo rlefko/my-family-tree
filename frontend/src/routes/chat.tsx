@@ -131,8 +131,8 @@ function ChatPage() {
             {
               documentId: a.documentId,
               filename: a.filename,
-              mimeType: a.mimeType ?? null,
-              kind: a.kind ?? null,
+              mimeType: a.mimeType,
+              kind: a.kind,
             },
           ]
         : [],
