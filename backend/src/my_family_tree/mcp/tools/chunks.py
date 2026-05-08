@@ -44,9 +44,8 @@ class VectorSearchOutput(BaseModel):
 )
 async def vector_search(ctx: ToolContext, payload: VectorSearchInput) -> VectorSearchOutput:
     async with session_scope(ctx.session_factory) as session:
-        # `cosine_distance` wraps `<=>` with `return_type=Float`, so the result
-        # column does not get re-routed through HALFVEC's deserializer (which
-        # would crash trying to subscript the scalar distance).
+        # Use `cosine_distance()` not `op("<=>")` so the result is Float-typed;
+        # otherwise the scalar distance is routed through `HalfVector._from_db` and crashes.
         distance = Chunk.embedding_half.cosine_distance(payload.embedding).label("distance")
         stmt = (
             select(Chunk, Document.original_filename, Document.kind, distance)
