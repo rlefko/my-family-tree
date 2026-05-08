@@ -53,6 +53,11 @@ class ChatAgent:
     budgets: Budgets = field(default_factory=Budgets)
     system_prompt: str = CHAT_SYSTEM_PROMPT
     reasoning: ReasoningConfig = field(default_factory=lambda: ReasoningConfig(effort="high"))
+    # Per-call cap. With `reasoning.effort="high"` the same budget covers
+    # reasoning, text, and tool-call argument JSON, so a 4096 default would
+    # routinely truncate a long `note_create(body=...)` mid-stream and leave
+    # the loop with unparseable arguments.
+    max_output_tokens: int = 16384
 
     async def run_turn(  # noqa: PLR0912  the loop is naturally branchy
         self,
@@ -90,7 +95,7 @@ class ChatAgent:
                 system=self.system_prompt,
                 messages=history,
                 tools=tool_specs,
-                max_tokens=4096,
+                max_tokens=self.max_output_tokens,
                 reasoning=self.reasoning,
             )
             async for event in stream:
