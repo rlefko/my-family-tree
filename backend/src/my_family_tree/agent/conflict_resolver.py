@@ -21,8 +21,8 @@ CONFLICT_RESOLVER_SYSTEM_PROMPT = (
 @dataclass(slots=True)
 class ConflictResolverSpec:
     conflict_id: str
-    max_tokens: int = 100_000
-    max_tool_calls: int = 30
+    max_tokens: int = 1_000_000
+    max_tool_calls: int = 150
 
     def budgets(self) -> Budgets:
         return Budgets(tokens=self.max_tokens, tool_calls=self.max_tool_calls)
