@@ -52,7 +52,7 @@ class ChatAgent:
     host: ToolHost
     budgets: Budgets = field(default_factory=Budgets)
     system_prompt: str = CHAT_SYSTEM_PROMPT
-    reasoning: ReasoningConfig = field(default_factory=lambda: ReasoningConfig(effort="high"))
+    reasoning: ReasoningConfig = field(default_factory=lambda: ReasoningConfig(effort="medium"))
     # Per-call cap. The same budget covers reasoning, text, and tool-call
     # argument JSON, so a small default would routinely truncate a long
     # `note_create(body=...)` mid-stream and leave the loop with unparseable
