@@ -215,10 +215,41 @@ class ChatAgent:
     async def _execute_tool(
         self, current_tool: dict[str, Any]
     ) -> tuple[ToolUseBlock, ToolResultBlock]:
+        raw_input = current_tool["input"] or ""
         try:
-            parsed = json.loads(current_tool["input"]) if current_tool["input"] else {}
-        except json.JSONDecodeError:
-            parsed = {"_raw": current_tool["input"]}
+            parsed = json.loads(raw_input) if raw_input else {}
+        except json.JSONDecodeError as e:
+            # Almost always means the model's argument JSON was cut off
+            # mid-stream by max_output_tokens. Surface a real error so the
+            # agent can shorten the payload or split the call; wrapping in
+            # `{"_raw": raw_input}` would just hand garbage to the tool's
+            # Pydantic validator and produce a confusing "field required"
+            # error one layer down.
+            log.warning(
+                "agent.tool_input_unparseable",
+                tool=current_tool["name"],
+                length=len(raw_input),
+                error=str(e),
+            )
+            block = ToolUseBlock(
+                type="tool_use",
+                id=current_tool["id"],
+                name=current_tool["name"],
+                input={"_unparseable": True},
+            )
+            return block, ToolResultBlock(
+                type="tool_result",
+                tool_use_id=current_tool["id"],
+                output={
+                    "error": (
+                        "Tool input JSON could not be parsed; this usually "
+                        "means the response was truncated by "
+                        "max_output_tokens. Retry with a shorter payload, "
+                        "or split the call into multiple smaller calls."
+                    )
+                },
+                is_error=True,
+            )
         block = ToolUseBlock(
             type="tool_use",
             id=current_tool["id"],
