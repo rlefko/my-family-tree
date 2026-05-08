@@ -34,6 +34,7 @@ import {
   type ProposalRow,
 } from "@/api/endpoints/proposals";
 import { Tooltip } from "@/components/ui/tooltip";
+import { PROPOSAL_ROW_TONE } from "@/lib/status-styles";
 import { cn } from "@/lib/utils";
 
 const ACTION_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -102,7 +103,7 @@ export function InlineProposals({ ids }: { ids: string[] }) {
   if (ids.length === 0) return null;
   if (isLoading && matched.length === 0) {
     return (
-      <div className="mt-3 rounded-md border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-xs text-indigo-700">
+      <div className="mt-3 rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-primary">
         Loading {ids.length} queued proposal{ids.length === 1 ? "" : "s"}...
       </div>
     );
@@ -125,15 +126,15 @@ export function InlineProposals({ ids }: { ids: string[] }) {
     if (rejectedCount) parts.push(`${rejectedCount} rejected`);
     const summary = parts.join(" · ") || "all resolved";
     return (
-      <details className="group mt-3 rounded-md border border-emerald-100 bg-emerald-50/40 text-xs">
-        <summary className="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-emerald-900 marker:hidden">
-          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+      <details className="group mt-3 rounded-md border border-emerald-200 bg-emerald-50/40 text-xs dark:border-emerald-900 dark:bg-emerald-950/30">
+        <summary className="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-emerald-900 marker:hidden dark:text-emerald-200">
+          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
           <span className="font-medium">
             {matched.length} proposal{matched.length === 1 ? "" : "s"} ({summary})
           </span>
-          <ChevronDown className="ml-auto h-3.5 w-3.5 text-emerald-600 transition-transform group-open:rotate-180" />
+          <ChevronDown className="ml-auto h-3.5 w-3.5 text-emerald-600 transition-transform group-open:rotate-180 dark:text-emerald-400" />
         </summary>
-        <ul className="space-y-1 border-t border-emerald-100 p-2">
+        <ul className="space-y-1 border-t border-emerald-200 p-2 dark:border-emerald-900">
           {matched.map((p) => (
             <ProposalLineItem
               key={p.id}
@@ -149,9 +150,9 @@ export function InlineProposals({ ids }: { ids: string[] }) {
   }
 
   return (
-    <div className="mt-3 rounded-md border border-indigo-100 bg-indigo-50/40 p-2">
+    <div className="mt-3 rounded-md border border-primary/20 bg-primary/5 p-2">
       <div className="flex items-center justify-between gap-2 px-1.5 pb-1.5">
-        <span className="text-xs font-medium text-indigo-900">
+        <span className="text-xs font-medium text-primary">
           {matched.length} proposal{matched.length === 1 ? "" : "s"} ({pending.length} pending)
         </span>
         <div className="flex items-center gap-2">
@@ -160,7 +161,7 @@ export function InlineProposals({ ids }: { ids: string[] }) {
               type="button"
               onClick={() => approveBatch.mutate(pending.map((p) => p.id))}
               disabled={approveBatch.isPending}
-              className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-2 py-1 text-[11px] font-medium text-white shadow-sm hover:bg-indigo-700 disabled:opacity-60"
+              className="inline-flex items-center gap-1 rounded-md bg-primary px-2 py-1 text-[11px] font-medium text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-60"
             >
               <CheckCheck className="h-3 w-3" />
               Approve all
@@ -169,7 +170,7 @@ export function InlineProposals({ ids }: { ids: string[] }) {
           <Link
             to="/proposals"
             search={{ ids: ids.join(",") }}
-            className="inline-flex items-center gap-1 text-[11px] font-medium text-indigo-700 hover:text-indigo-900"
+            className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:text-primary/80"
           >
             <ExternalLink className="h-3 w-3" />
             Open
@@ -204,20 +205,14 @@ function ProposalLineItem({
 }) {
   const Icon = iconFor(p);
   const isPending = p.status === "pending";
-  const statusClasses: Record<string, string> = {
-    pending: "bg-white border border-zinc-200 text-zinc-700",
-    approved: "bg-emerald-50 border border-emerald-200 text-emerald-800",
-    rejected: "bg-zinc-100 border border-zinc-200 text-zinc-500 line-through",
-    expired: "bg-zinc-100 border border-zinc-200 text-zinc-500",
-  };
   return (
     <li
       className={cn(
         "flex items-center gap-2 rounded-md px-2 py-1.5 text-xs",
-        statusClasses[p.status] ?? statusClasses.pending,
+        PROPOSAL_ROW_TONE[p.status] ?? PROPOSAL_ROW_TONE.pending,
       )}
     >
-      <Icon className="h-3.5 w-3.5 shrink-0 text-indigo-700" />
+      <Icon className="h-3.5 w-3.5 shrink-0 text-primary" />
       <span className="flex-1 truncate" title={p.rationale ?? undefined}>
         {summaryFor(p)}
       </span>
@@ -225,7 +220,7 @@ function ProposalLineItem({
         <Tooltip
           content={`Confidence in this proposal: ${p.confidence}/100. 100 means a direct user assertion; lower scores reflect inferences the agent made.`}
         >
-          <span className="shrink-0 cursor-help text-[10px] uppercase tracking-wide text-zinc-400">
+          <span className="shrink-0 cursor-help text-[10px] uppercase tracking-wide text-muted-foreground">
             {p.confidence}%
           </span>
         </Tooltip>
@@ -236,7 +231,7 @@ function ProposalLineItem({
             type="button"
             onClick={onApprove}
             disabled={busy}
-            className="inline-flex items-center gap-1 rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-60"
+            className="inline-flex items-center gap-1 rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-60 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200 dark:hover:bg-emerald-900/50"
             aria-label="Approve proposal"
           >
             <Check className="h-3 w-3" />
@@ -246,7 +241,7 @@ function ProposalLineItem({
             type="button"
             onClick={onReject}
             disabled={busy}
-            className="inline-flex items-center gap-1 rounded border border-zinc-300 bg-white px-2 py-0.5 text-[11px] font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+            className="inline-flex items-center gap-1 rounded border border-input bg-background px-2 py-0.5 text-[11px] font-medium text-foreground hover:bg-muted disabled:opacity-60"
             aria-label="Reject proposal"
           >
             <X className="h-3 w-3" />

@@ -112,10 +112,10 @@ function DocumentsPage() {
 
   return (
     <section className="flex h-full flex-col">
-      <header className="flex items-center justify-between border-b border-zinc-200 bg-white px-6 py-4">
+      <header className="flex items-center justify-between border-b border-border bg-card px-6 py-4">
         <div>
-          <h1 className="text-xl font-semibold">Documents</h1>
-          <p className="text-xs text-zinc-500">
+          <h1 className="text-xl font-semibold text-foreground">Documents</h1>
+          <p className="text-xs text-muted-foreground">
             Upload PDFs, scans, photos, GEDCOM, and text. They are extracted, embedded, and
             searchable inside chat as soon as they are ready.
           </p>
@@ -123,7 +123,7 @@ function DocumentsPage() {
         <button
           type="button"
           onClick={() => dropzone.current?.pickFiles()}
-          className="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700"
+          className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
         >
           <Upload className="h-3.5 w-3.5" />
           Upload
@@ -133,7 +133,7 @@ function DocumentsPage() {
       <div className="flex-1 overflow-y-auto px-6 py-4">
         <div className="mb-4 flex items-center gap-2">
           <div className="relative flex-1">
-            <SearchIcon className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" />
+            <SearchIcon className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={qDraft}
               onChange={(e) => setQDraft(e.target.value)}
@@ -144,7 +144,7 @@ function DocumentsPage() {
           <select
             value={search.kind ?? ""}
             onChange={(e) => setFilter({ kind: e.target.value || undefined })}
-            className="rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm"
+            className="rounded-md border border-input bg-background px-2 py-1.5 text-sm text-foreground"
           >
             <option value="">All kinds</option>
             {DOCUMENT_KINDS.map((k) => (
@@ -156,7 +156,7 @@ function DocumentsPage() {
           <select
             value={search.status ?? ""}
             onChange={(e) => setFilter({ status: e.target.value || undefined })}
-            className="rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm"
+            className="rounded-md border border-input bg-background px-2 py-1.5 text-sm text-foreground"
           >
             <option value="">All statuses</option>
             {DOCUMENT_STATUSES.map((s) => (
@@ -174,7 +174,7 @@ function DocumentsPage() {
         {docs.isLoading ? (
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
             {[0, 1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="h-24 animate-pulse rounded-lg bg-zinc-100" />
+              <div key={i} className="h-24 animate-pulse rounded-lg bg-muted" />
             ))}
           </div>
         ) : items.length === 0 ? (
@@ -223,17 +223,20 @@ function DocumentCard({
   return (
     <Card
       className={cn(
-        "cursor-pointer overflow-hidden transition hover:border-indigo-300",
-        highlighted ? "border-indigo-400 ring-1 ring-indigo-200" : "",
+        "cursor-pointer overflow-hidden transition hover:border-primary/40",
+        highlighted ? "border-primary/60 ring-1 ring-primary/30" : "",
       )}
     >
       <CardContent className="p-4">
         <div className="flex items-start gap-3">
-          <div className="rounded-md bg-indigo-50 p-2 text-indigo-600">
+          <div className="rounded-md bg-primary/10 p-2 text-primary">
             <Icon className="h-5 w-5" />
           </div>
           <div className="min-w-0 flex-1" role="button" tabIndex={0} onClick={onOpen}>
-            <p className="truncate text-sm font-medium text-zinc-900" title={doc.original_filename}>
+            <p
+              className="truncate text-sm font-medium text-foreground"
+              title={doc.original_filename}
+            >
               {doc.original_filename}
             </p>
             <div className="mt-1 flex flex-wrap items-center gap-1.5">
@@ -242,10 +245,10 @@ function DocumentCard({
               </Badge>
               <StatusBadge status={doc.status} />
               {isActive ? (
-                <Loader2 className="h-3 w-3 animate-spin text-indigo-500" aria-hidden />
+                <Loader2 className="h-3 w-3 animate-spin text-primary" aria-hidden />
               ) : null}
             </div>
-            <div className="mt-2 flex items-center gap-3 text-[11px] text-zinc-500">
+            <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground">
               <span>{doc.size_bytes ? formatBytes(doc.size_bytes) : ""}</span>
               {doc.pages ? (
                 <span>
@@ -260,7 +263,7 @@ function DocumentCard({
               <button
                 type="button"
                 aria-label="Document actions"
-                className="rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
               >
                 <MoreVertical className="h-4 w-4" />
               </button>
@@ -285,7 +288,7 @@ function DocumentCard({
                   e.preventDefault();
                   setConfirmDelete(true);
                 }}
-                className="text-red-600 focus:text-red-700"
+                className="text-destructive focus:text-destructive"
               >
                 Delete
               </DropdownMenuItem>
@@ -310,19 +313,19 @@ function DocumentCard({
 
 function EmptyState({ onUpload }: { onUpload: () => void }) {
   return (
-    <div className="mx-auto mt-12 flex max-w-md flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-zinc-300 bg-white px-6 py-10 text-center">
-      <div className="rounded-full bg-indigo-50 p-3 text-indigo-600">
+    <div className="mx-auto mt-12 flex max-w-md flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-border bg-card px-6 py-10 text-center">
+      <div className="rounded-full bg-primary/10 p-3 text-primary">
         <Upload className="h-6 w-6" />
       </div>
-      <h2 className="text-base font-semibold text-zinc-900">No documents yet</h2>
-      <p className="text-sm text-zinc-500">
+      <h2 className="text-base font-semibold text-foreground">No documents yet</h2>
+      <p className="text-sm text-muted-foreground">
         Drop files here or click Upload to get started. PDFs, photos, scans, GEDCOM, and plain text
         are all supported.
       </p>
       <button
         type="button"
         onClick={onUpload}
-        className="mt-1 inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700"
+        className="mt-1 inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
       >
         <Upload className="h-3.5 w-3.5" />
         Upload your first document

@@ -130,7 +130,7 @@ function DrawerBody({
 
   if (detail.isLoading || !detail.data) {
     return (
-      <div className="flex flex-1 items-center justify-center text-sm text-zinc-500">
+      <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
         <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading person...
       </div>
     );
@@ -152,7 +152,7 @@ function DrawerBody({
             {[p.given_names, p.surname].filter(Boolean).join(" ")}
           </DrawerDescription>
         ) : null}
-        <div className="mt-1 flex items-center gap-2 text-[11px] text-zinc-500">
+        <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
           <span className="capitalize">{p.sex}</span>
           <span>·</span>
           <span>{p.is_living ? "Living" : "Deceased"}</span>
@@ -161,7 +161,7 @@ function DrawerBody({
         </div>
       </DrawerHeader>
 
-      <nav className="flex border-b border-zinc-200 px-6">
+      <nav className="flex border-b border-border px-6">
         {(
           [
             ["details", "Details"],
@@ -177,8 +177,8 @@ function DrawerBody({
             className={cn(
               "border-b-2 px-3 py-2 text-xs font-medium transition-colors",
               tab === key
-                ? "border-indigo-600 text-indigo-700"
-                : "border-transparent text-zinc-500 hover:text-zinc-900",
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
             {label}
@@ -226,11 +226,11 @@ function DrawerBody({
         )}
       </div>
 
-      <footer className="space-y-2 border-t border-zinc-200 bg-zinc-50 px-6 py-3">
+      <footer className="space-y-2 border-t border-border bg-muted px-6 py-3">
         <div>
           <label
             htmlFor="add-note"
-            className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500"
+            className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
           >
             Add a note
           </label>
@@ -241,7 +241,7 @@ function DrawerBody({
               value={noteDraft}
               onChange={(e) => setNoteDraft(e.target.value)}
               placeholder="Markdown supported. Appended to existing notes with a separator."
-              className="flex-1 resize-none rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-xs shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              className="flex-1 resize-none rounded-md border border-input bg-background px-2 py-1.5 text-xs shadow-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
             />
             <button
               type="button"
@@ -251,7 +251,7 @@ function DrawerBody({
                 noteMutation.mutate({ personId, text }, { onSuccess: () => setNoteDraft("") });
               }}
               disabled={!noteDraft.trim() || noteMutation.isPending}
-              className="self-stretch rounded-md bg-indigo-600 px-3 text-xs font-medium text-white shadow-sm hover:bg-indigo-700 disabled:opacity-60"
+              className="self-stretch rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-60"
             >
               Save
             </button>
@@ -261,7 +261,7 @@ function DrawerBody({
           <button
             type="button"
             onClick={() => setConfirmOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"
+            className="inline-flex items-center gap-1.5 rounded-md border border-destructive/30 bg-background px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10"
           >
             <Trash2 className="h-3.5 w-3.5" />
             Delete person
@@ -408,15 +408,15 @@ function DetailsPanel({
       />
 
       <div>
-        <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+        <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
           Notes
         </div>
         {person.notes_md ? (
-          <div className="prose-chat rounded-md border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-800">
+          <div className="prose-chat rounded-md border border-border bg-card px-3 py-2 text-xs text-foreground">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{person.notes_md}</ReactMarkdown>
           </div>
         ) : (
-          <div className="text-xs italic text-zinc-400">
+          <div className="text-xs italic text-muted-foreground">
             No notes yet. Use the &ldquo;Add a note&rdquo; box below.
           </div>
         )}
@@ -437,8 +437,8 @@ function Field({
   const labelEl = (
     <span
       className={cn(
-        "text-[11px] font-semibold uppercase tracking-wide text-zinc-500",
-        tooltip ? "border-b border-dotted border-zinc-300 cursor-help" : "",
+        "text-[11px] font-semibold uppercase tracking-wide text-muted-foreground",
+        tooltip ? "border-b border-dotted border-border cursor-help" : "",
       )}
     >
       {label}
@@ -449,8 +449,8 @@ function Field({
       <div className="mb-1">
         {tooltip ? <Tooltip content={tooltip}>{labelEl}</Tooltip> : labelEl}
       </div>
-      <div className={cn("text-sm", value ? "text-zinc-900" : "italic text-zinc-400")}>
-        {value || "—"}
+      <div className={cn("text-sm", value ? "text-foreground" : "italic text-muted-foreground")}>
+        {value || "-"}
       </div>
     </div>
   );
@@ -516,29 +516,29 @@ function RelationshipsPanel({
   return (
     <div className="space-y-4">
       {loading ? (
-        <div className="text-xs text-zinc-500">Loading...</div>
+        <div className="text-xs text-muted-foreground">Loading...</div>
       ) : edges.length === 0 ? (
-        <div className="rounded-md border border-dashed border-zinc-300 bg-white p-4 text-center text-xs text-zinc-500">
+        <div className="rounded-md border border-dashed border-border bg-card p-4 text-center text-xs text-muted-foreground">
           No relationships yet.
         </div>
       ) : (
         grouped.map(([phrase, items]) => (
           <div key={phrase}>
-            <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+            <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
               {phrase}
             </div>
             <ul className="space-y-1">
               {items.map((e) => (
                 <li
                   key={e.id}
-                  className="flex items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs"
+                  className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-xs"
                 >
-                  <span className="flex-1 font-medium text-zinc-900">{e.other.display_name}</span>
+                  <span className="flex-1 font-medium text-foreground">{e.other.display_name}</span>
                   {e.confidence >= 100 ? null : (
                     <Tooltip
                       content={`Confidence in this relationship: ${e.confidence}/100. 100 means asserted directly by the user; lower numbers reflect inferences from documents or chat.`}
                     >
-                      <span className="cursor-help text-[10px] uppercase tracking-wide text-zinc-400">
+                      <span className="cursor-help text-[10px] uppercase tracking-wide text-muted-foreground">
                         {e.confidence}%
                       </span>
                     </Tooltip>
@@ -549,7 +549,7 @@ function RelationshipsPanel({
                       onClick={() => onDelete(e.id)}
                       disabled={deletingId === e.id}
                       aria-label="Delete relationship"
-                      className="rounded p-1 text-zinc-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                      className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
                     >
                       {deletingId === e.id ? (
                         <Loader2 className="h-3 w-3 animate-spin" />
@@ -576,7 +576,7 @@ function RelationshipsPanel({
         <button
           type="button"
           onClick={onAdd}
-          className="inline-flex items-center gap-1.5 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm hover:bg-zinc-50"
+          className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-muted"
         >
           <Plus className="h-3.5 w-3.5" />
           Add relationship
@@ -603,14 +603,14 @@ function AddRelationshipForm({
   const symmetric = REL_TYPES.find((t) => t.value === type)?.symmetric;
 
   return (
-    <div className="rounded-md border border-zinc-200 bg-white p-3">
+    <div className="rounded-md border border-border bg-card p-3">
       <div className="space-y-2 text-xs">
         <label className="block">
-          <span className="text-zinc-600">Relationship</span>
+          <span className="text-muted-foreground">Relationship</span>
           <select
             value={type}
             onChange={(e) => setType(e.target.value)}
-            className="mt-1 w-full rounded border border-zinc-300 bg-white px-2 py-1 text-xs"
+            className="mt-1 w-full rounded border border-input bg-background px-2 py-1 text-xs"
           >
             {REL_TYPES.map((r) => (
               <option key={r.value} value={r.value}>
@@ -621,11 +621,11 @@ function AddRelationshipForm({
         </label>
         {!symmetric ? (
           <label className="block">
-            <span className="text-zinc-600">Direction</span>
+            <span className="text-muted-foreground">Direction</span>
             <select
               value={direction}
               onChange={(e) => setDirection(e.target.value as "outgoing" | "incoming")}
-              className="mt-1 w-full rounded border border-zinc-300 bg-white px-2 py-1 text-xs"
+              className="mt-1 w-full rounded border border-input bg-background px-2 py-1 text-xs"
             >
               <option value="outgoing">This person → other</option>
               <option value="incoming">Other → this person</option>
@@ -633,11 +633,11 @@ function AddRelationshipForm({
           </label>
         ) : null}
         <label className="block">
-          <span className="text-zinc-600">Other person</span>
+          <span className="text-muted-foreground">Other person</span>
           <select
             value={otherId}
             onChange={(e) => setOtherId(e.target.value)}
-            className="mt-1 w-full rounded border border-zinc-300 bg-white px-2 py-1 text-xs"
+            className="mt-1 w-full rounded border border-input bg-background px-2 py-1 text-xs"
           >
             <option value="">Select...</option>
             {people.map((p) => (
@@ -653,7 +653,7 @@ function AddRelationshipForm({
           type="button"
           onClick={onCancel}
           disabled={submitting}
-          className="rounded border border-zinc-300 bg-white px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+          className="rounded border border-input bg-background px-2 py-1 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-60"
         >
           Cancel
         </button>
@@ -661,7 +661,7 @@ function AddRelationshipForm({
           type="button"
           onClick={() => otherId && onSubmit(otherId, type, direction)}
           disabled={!otherId || submitting}
-          className="rounded bg-indigo-600 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
+          className="rounded bg-primary px-2 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
         >
           {submitting ? "Adding..." : "Add"}
         </button>
@@ -699,9 +699,9 @@ function EventsPanel({
   return (
     <div className="space-y-3">
       {loading ? (
-        <div className="text-xs text-zinc-500">Loading...</div>
+        <div className="text-xs text-muted-foreground">Loading...</div>
       ) : events.length === 0 ? (
-        <div className="rounded-md border border-dashed border-zinc-300 bg-white p-4 text-center text-xs text-zinc-500">
+        <div className="rounded-md border border-dashed border-border bg-card p-4 text-center text-xs text-muted-foreground">
           No events yet. Add a marriage, birth, death, divorce, or other event.
         </div>
       ) : (
@@ -723,7 +723,7 @@ function EventsPanel({
         <button
           type="button"
           onClick={onAdd}
-          className="inline-flex items-center gap-1.5 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm hover:bg-zinc-50"
+          className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-muted"
         >
           <Plus className="h-3.5 w-3.5" />
           Add event
@@ -737,39 +737,39 @@ function EventCard({ ev }: { ev: EventRow }) {
   const typeLabel = ev.type.replaceAll("_", " ");
   const co = ev.participants.map((p) => `${p.display_name ?? p.person_id} (${p.role})`).join(", ");
   return (
-    <li className="rounded-md border border-zinc-200 bg-white px-3 py-2 text-xs">
+    <li className="rounded-md border border-border bg-card px-3 py-2 text-xs">
       <div className="flex items-start justify-between gap-2">
-        <span className="font-medium capitalize text-zinc-900">{typeLabel}</span>
+        <span className="font-medium capitalize text-foreground">{typeLabel}</span>
         {ev.confidence >= 100 ? null : (
           <Tooltip content={`Confidence in this event: ${ev.confidence}/100.`}>
-            <span className="cursor-help text-[10px] uppercase tracking-wide text-zinc-400">
+            <span className="cursor-help text-[10px] uppercase tracking-wide text-muted-foreground">
               {ev.confidence}%
             </span>
           </Tooltip>
         )}
       </div>
-      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-zinc-600">
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
         {ev.date_text ? (
           <span className="inline-flex items-center gap-1">
-            <Calendar className="h-3 w-3 text-zinc-400" />
+            <Calendar className="h-3 w-3 text-muted-foreground" />
             {ev.date_text}
           </span>
         ) : null}
         {ev.place ? (
           <span className="inline-flex items-center gap-1">
-            <MapPin className="h-3 w-3 text-zinc-400" />
+            <MapPin className="h-3 w-3 text-muted-foreground" />
             {ev.place.name}
           </span>
         ) : null}
         {ev.role ? (
-          <span className="rounded-full bg-zinc-100 px-1.5 py-0.5 text-[10px] text-zinc-600">
+          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
             this person: {ev.role}
           </span>
         ) : null}
       </div>
-      {co ? <div className="mt-1 text-[11px] text-zinc-500">with {co}</div> : null}
+      {co ? <div className="mt-1 text-[11px] text-muted-foreground">with {co}</div> : null}
       {ev.description ? (
-        <div className="mt-1 text-[11px] italic text-zinc-500">{ev.description}</div>
+        <div className="mt-1 text-[11px] italic text-muted-foreground">{ev.description}</div>
       ) : null}
     </li>
   );
@@ -804,14 +804,14 @@ function AddEventForm({
   const otherRole = isPaired ? "spouse" : "principal";
 
   return (
-    <div className="rounded-md border border-zinc-200 bg-white p-3">
+    <div className="rounded-md border border-border bg-card p-3">
       <div className="space-y-2 text-xs">
         <label className="block">
-          <span className="text-zinc-600">Type</span>
+          <span className="text-muted-foreground">Type</span>
           <select
             value={type}
             onChange={(e) => setType(e.target.value)}
-            className="mt-1 w-full rounded border border-zinc-300 bg-white px-2 py-1 text-xs"
+            className="mt-1 w-full rounded border border-input bg-background px-2 py-1 text-xs"
           >
             {EVENT_TYPES.map((t) => (
               <option key={t.value} value={t.value}>
@@ -821,32 +821,32 @@ function AddEventForm({
           </select>
         </label>
         <label className="block">
-          <span className="text-zinc-600">Date</span>
+          <span className="text-muted-foreground">Date</span>
           <input
             type="text"
             value={dateText}
             onChange={(e) => setDateText(e.target.value)}
             placeholder="e.g. June 14 1972, circa 1900, 1942-1944"
-            className="mt-1 w-full rounded border border-zinc-300 bg-white px-2 py-1 text-xs"
+            className="mt-1 w-full rounded border border-input bg-background px-2 py-1 text-xs"
           />
         </label>
         <label className="block">
-          <span className="text-zinc-600">Place</span>
+          <span className="text-muted-foreground">Place</span>
           <input
             type="text"
             value={placeText}
             onChange={(e) => setPlaceText(e.target.value)}
             placeholder="e.g. Brooklyn, NY"
-            className="mt-1 w-full rounded border border-zinc-300 bg-white px-2 py-1 text-xs"
+            className="mt-1 w-full rounded border border-input bg-background px-2 py-1 text-xs"
           />
         </label>
         {isPaired ? (
           <label className="block">
-            <span className="text-zinc-600">Other party</span>
+            <span className="text-muted-foreground">Other party</span>
             <select
               value={otherId}
               onChange={(e) => setOtherId(e.target.value)}
-              className="mt-1 w-full rounded border border-zinc-300 bg-white px-2 py-1 text-xs"
+              className="mt-1 w-full rounded border border-input bg-background px-2 py-1 text-xs"
             >
               <option value="">Select...</option>
               {people.map((p) => (
@@ -858,12 +858,12 @@ function AddEventForm({
           </label>
         ) : null}
         <label className="block">
-          <span className="text-zinc-600">Description (optional)</span>
+          <span className="text-muted-foreground">Description (optional)</span>
           <input
             type="text"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="mt-1 w-full rounded border border-zinc-300 bg-white px-2 py-1 text-xs"
+            className="mt-1 w-full rounded border border-input bg-background px-2 py-1 text-xs"
           />
         </label>
       </div>
@@ -872,7 +872,7 @@ function AddEventForm({
           type="button"
           onClick={onCancel}
           disabled={submitting}
-          className="rounded border border-zinc-300 bg-white px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+          className="rounded border border-input bg-background px-2 py-1 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-60"
         >
           Cancel
         </button>
@@ -890,7 +890,7 @@ function AddEventForm({
             })
           }
           disabled={submitting || (isPaired && !otherId)}
-          className="rounded bg-indigo-600 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
+          className="rounded bg-primary px-2 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
         >
           {submitting ? "Adding..." : "Add event"}
         </button>
@@ -912,10 +912,10 @@ function DocumentsPanel({
   }[];
   loading: boolean;
 }) {
-  if (loading) return <div className="text-xs text-zinc-500">Loading...</div>;
+  if (loading) return <div className="text-xs text-muted-foreground">Loading...</div>;
   if (docs.length === 0) {
     return (
-      <div className="rounded-md border border-dashed border-zinc-300 bg-white p-4 text-center text-xs text-zinc-500">
+      <div className="rounded-md border border-dashed border-border bg-card p-4 text-center text-xs text-muted-foreground">
         No documents reference this person yet.
       </div>
     );
@@ -925,17 +925,19 @@ function DocumentsPanel({
       {docs.map((d) => (
         <li
           key={d.id}
-          className="flex items-start justify-between gap-3 rounded-md border border-zinc-200 bg-white px-3 py-2 text-xs"
+          className="flex items-start justify-between gap-3 rounded-md border border-border bg-card px-3 py-2 text-xs"
         >
           <div className="min-w-0 flex-1">
-            <div className="truncate font-medium text-zinc-900">{d.title ?? "(untitled)"}</div>
-            <div className="text-[10px] uppercase tracking-wide text-zinc-400">{d.kind}</div>
-            {d.citation ? <div className="mt-0.5 text-zinc-600">{d.citation}</div> : null}
+            <div className="truncate font-medium text-foreground">{d.title ?? "(untitled)"}</div>
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              {d.kind}
+            </div>
+            {d.citation ? <div className="mt-0.5 text-muted-foreground">{d.citation}</div> : null}
           </div>
           <Tooltip
             content={`This document contributed ${d.claim_count} claim${d.claim_count === 1 ? "" : "s"} about this person.`}
           >
-            <span className="shrink-0 cursor-help rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-700">
+            <span className="shrink-0 cursor-help rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
               {d.claim_count} claim{d.claim_count === 1 ? "" : "s"}
             </span>
           </Tooltip>

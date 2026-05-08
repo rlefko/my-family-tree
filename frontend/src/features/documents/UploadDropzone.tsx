@@ -183,8 +183,8 @@ export const UploadDropzone = forwardRef<UploadDropzoneHandle, Props>(function U
         }}
       />
       {showOverlay && dragging ? (
-        <div className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-indigo-600/10 backdrop-blur-sm">
-          <div className="flex flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-indigo-500 bg-white px-8 py-6 text-indigo-700 shadow-xl">
+        <div className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-primary/10 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-primary bg-card px-8 py-6 text-primary shadow-xl">
             <Upload className="h-8 w-8" />
             <p className="text-sm font-medium">Drop files to upload</p>
           </div>
@@ -196,8 +196,8 @@ export const UploadDropzone = forwardRef<UploadDropzoneHandle, Props>(function U
             <div
               key={it.id}
               className={cn(
-                "rounded-md border bg-white px-3 py-2 shadow",
-                it.status === "failed" ? "border-red-200" : "border-zinc-200",
+                "rounded-md border bg-card px-3 py-2 text-card-foreground shadow",
+                it.status === "failed" ? "border-destructive/40" : "border-border",
               )}
             >
               <div className="flex items-center justify-between gap-2">
@@ -208,7 +208,7 @@ export const UploadDropzone = forwardRef<UploadDropzoneHandle, Props>(function U
                   type="button"
                   onClick={() => dismiss(it.id)}
                   aria-label="Dismiss"
-                  className="text-zinc-400 hover:text-zinc-600"
+                  className="text-muted-foreground hover:text-foreground"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -234,22 +234,24 @@ export const UploadDropzone = forwardRef<UploadDropzoneHandle, Props>(function U
 function UploadStatusLine({ item }: { item: UploadingItem }) {
   if (item.status === "uploading") {
     return (
-      <p className="mt-1 text-xs text-zinc-500">Uploading {Math.round(item.progress * 100)}%</p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Uploading {Math.round(item.progress * 100)}%
+      </p>
     );
   }
   if (item.status === "processing") {
     return (
-      <p className="mt-1 inline-flex items-center gap-1 text-xs text-indigo-600">
+      <p className="mt-1 inline-flex items-center gap-1 text-xs text-primary">
         <Loader2 className="h-3 w-3 animate-spin" />
         Processing...
       </p>
     );
   }
   if (item.status === "ready") {
-    return <p className="mt-1 text-xs text-emerald-600">Ready</p>;
+    return <p className="mt-1 text-xs text-emerald-600 dark:text-emerald-400">Ready</p>;
   }
   return (
-    <p className="mt-1 text-xs text-red-600" title={item.error ?? ""}>
+    <p className="mt-1 text-xs text-destructive" title={item.error ?? ""}>
       {item.error ?? "Failed"}
     </p>
   );

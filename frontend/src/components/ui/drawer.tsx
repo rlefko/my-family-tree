@@ -50,14 +50,14 @@ export function DrawerContent({
         }}
         onPointerDownOutside={(e) => e.preventDefault()}
         className={cn(
-          "fixed inset-y-0 right-0 z-40 flex flex-col border-l border-zinc-200 bg-white shadow-xl outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right",
+          "fixed inset-y-0 right-0 z-40 flex flex-col border-l border-border bg-card shadow-xl outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right",
           width,
           className,
         )}
       >
         {children}
         <DialogPrimitive.Close
-          className="absolute right-4 top-4 rounded-md p-1 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className="absolute right-4 top-4 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           aria-label="Close"
         >
           <X className="h-4 w-4" />
@@ -68,12 +68,12 @@ export function DrawerContent({
 }
 
 export function DrawerHeader({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("border-b border-zinc-200 px-6 py-4", className)}>{children}</div>;
+  return <div className={cn("border-b border-border px-6 py-4", className)}>{children}</div>;
 }
 
 export function DrawerTitle({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <DialogPrimitive.Title className={cn("text-lg font-semibold text-zinc-900", className)}>
+    <DialogPrimitive.Title className={cn("text-lg font-semibold text-foreground", className)}>
       {children}
     </DialogPrimitive.Title>
   );
@@ -87,7 +87,7 @@ export function DrawerDescription({
   className?: string;
 }) {
   return (
-    <DialogPrimitive.Description className={cn("text-xs text-zinc-500", className)}>
+    <DialogPrimitive.Description className={cn("text-xs text-muted-foreground", className)}>
       {children}
     </DialogPrimitive.Description>
   );
