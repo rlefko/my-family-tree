@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from my_family_tree.agent.budgets import Budgets
 from my_family_tree.agent.loop import ChatAgent
+from my_family_tree.agent.subagent_events import get_subagent_event_sink
 from my_family_tree.core.logging import get_logger
 from my_family_tree.llm.base import Message, TextBlock
 from my_family_tree.mcp.host import ToolContext, ToolHost
@@ -62,10 +63,14 @@ class TraversalSubagentResult(BaseModel):
     """Compact return shape from a traversal subagent run. `summary` is the
     final assistant text; `persons` is the de-duplicated list of person
     summaries the subagent saw via tool results, so the parent can cite ids
-    without re-walking."""
+    without re-walking. `trace` is the consolidated proof of work the
+    subagent did (text fragments, thinking summaries, and tool calls with
+    their inputs and outputs) so the parent UI can render it after a reload
+    without re-running the subagent."""
 
     summary: str = Field(default="")
     persons: list[PersonSummary] = Field(default_factory=list)
+    trace: list[dict[str, Any]] = Field(default_factory=list)
     tokens_used: int = 0
     tool_calls_used: int = 0
 
@@ -113,7 +118,7 @@ class TraversalSubagentRunner:
         )
 
 
-async def run_traversal_subagent(
+async def run_traversal_subagent(  # noqa: PLR0912, PLR0915  the trace recorder is naturally branchy
     *,
     question: str,
     person_id: UUID,
@@ -122,13 +127,20 @@ async def run_traversal_subagent(
     model: str,
     parent_ctx: ToolContext,
 ) -> TraversalSubagentResult:
-    """Run the traversal subagent to completion and return its summary.
+    """Run the traversal subagent to completion and return its summary plus
+    the proof-of-work trace.
 
     The inner host inherits the parent's session factory and tree id, but its
     capabilities collapse to `Capability.READ` and `traverse_and_summarize` is
     excluded from the catalog so the subagent cannot recurse into itself.
-    Tool results are scanned for `PersonSummary` shapes so the parent can
-    receive structured ids alongside the prose summary."""
+
+    Each inner event is forwarded to the active `SubagentEventSink` (if any)
+    so the parent loop can stream the trace live to the UI. The same events
+    are folded into a consolidated `trace` list on the result: contiguous
+    `text_delta` and `thinking_delta` fragments coalesce into single text or
+    thinking entries; `tool_use_started` opens a new tool entry that is then
+    locked by `tool_use_finished` (input) and `tool_result` (output)."""
+    sink = get_subagent_event_sink()
     sub_ctx = replace(
         parent_ctx,
         capabilities=Capability.READ,
@@ -168,27 +180,99 @@ async def run_traversal_subagent(
     )
     text_parts: list[str] = []
     persons: dict[UUID, PersonSummary] = {}
+    trace: list[dict[str, Any]] = []
+    open_tools: dict[str, int] = {}
     tokens_used = 0
     tool_calls_used = 0
+
+    def _emit(payload: dict[str, Any]) -> None:
+        if sink is not None:
+            sink.emit(payload)
+
     async for event in agent.run_turn([initial]):
         if event.type == "text_delta":
-            text_parts.append(str(event.payload.get("text") or ""))
+            text = str(event.payload.get("text") or "")
+            if not text:
+                continue
+            _emit({"type": "text_delta", "text": text})
+            text_parts.append(text)
+            if trace and trace[-1].get("type") == "text":
+                trace[-1]["text"] += text
+            else:
+                trace.append({"type": "text", "text": text})
+        elif event.type == "thinking_delta":
+            text = str(event.payload.get("text") or "")
+            if not text:
+                continue
+            _emit({"type": "thinking_delta", "text": text})
+            if trace and trace[-1].get("type") == "thinking":
+                trace[-1]["text"] += text
+            else:
+                trace.append({"type": "thinking", "text": text})
+        elif event.type == "tool_use_started":
+            tid = str(event.payload.get("id") or "")
+            name = str(event.payload.get("name") or "")
+            _emit({"type": "tool_use_started", "id": tid, "name": name})
+            entry: dict[str, Any] = {
+                "type": "tool_use",
+                "id": tid,
+                "name": name,
+                "input": None,
+                "output": None,
+                "is_error": False,
+            }
+            trace.append(entry)
+            open_tools[tid] = len(trace) - 1
+        elif event.type == "tool_use_finished":
+            tid = str(event.payload.get("id") or "")
+            input_payload = event.payload.get("input")
+            tool_name = str(event.payload.get("name") or "")
+            _emit(
+                {
+                    "type": "tool_use_finished",
+                    "id": tid,
+                    "name": tool_name,
+                    "input": input_payload,
+                }
+            )
+            idx = open_tools.get(tid)
+            if idx is not None:
+                trace[idx]["input"] = input_payload
+                if tool_name:
+                    trace[idx]["name"] = tool_name
         elif event.type == "tool_result":
+            tid = str(event.payload.get("tool_use_id") or "")
             output = event.payload.get("output")
+            is_error = bool(event.payload.get("is_error", False))
+            _emit(
+                {
+                    "type": "tool_result",
+                    "tool_use_id": tid,
+                    "output": output,
+                    "is_error": is_error,
+                }
+            )
+            idx = open_tools.pop(tid, None)
+            if idx is not None:
+                trace[idx]["output"] = output
+                trace[idx]["is_error"] = is_error
             if isinstance(output, dict):
                 _collect_persons(output, persons)
         elif event.type == "done":
             tokens_used = int(event.payload.get("tokens_used") or 0)
             tool_calls_used = int(event.payload.get("tool_calls_used") or 0)
         elif event.type == "error":
+            message = str(event.payload.get("message") or "")
+            _emit({"type": "error", "message": message})
             log.warning(
                 "traversal_subagent.error",
                 anchor_person_id=str(person_id),
-                error=str(event.payload.get("message") or ""),
+                error=message,
             )
             return TraversalSubagentResult(
-                summary=str(event.payload.get("message") or ""),
+                summary=message,
                 persons=list(persons.values()),
+                trace=trace,
                 tokens_used=tokens_used,
                 tool_calls_used=tool_calls_used,
             )
@@ -196,12 +280,14 @@ async def run_traversal_subagent(
         "traversal_subagent.end",
         anchor_person_id=str(person_id),
         persons=len(persons),
+        trace_items=len(trace),
         tokens_used=tokens_used,
         tool_calls_used=tool_calls_used,
     )
     return TraversalSubagentResult(
         summary="".join(text_parts).strip(),
         persons=list(persons.values()),
+        trace=trace,
         tokens_used=tokens_used,
         tool_calls_used=tool_calls_used,
     )
