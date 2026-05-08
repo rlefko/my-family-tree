@@ -19,7 +19,6 @@
     "gen:types": "openapi-typescript ../backend/openapi.json -o src/api/generated/schema.d.ts"
   },
   "dependencies": {
-    "@dagrejs/dagre": "^1.1.4",
     "@hookform/resolvers": "^5.2.2",
     "@radix-ui/react-avatar": "^1.1.2",
     "@radix-ui/react-dialog": "^1.1.4",
