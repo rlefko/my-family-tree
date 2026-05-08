@@ -87,7 +87,7 @@ function turnsFromMessages(messages: MessageRow[]): ChatTurn[] {
     if (m.role === "user") {
       const blocks = m.content as UserBlock[];
       const text = blocks
-        .filter((b): b is { type: "text"; text: string } => b.type === "text")
+        .filter((b): b is Extract<UserBlock, { type: "text" }> => b.type === "text")
         .map((b) => b.text)
         .join("");
       const attachments = blocks
