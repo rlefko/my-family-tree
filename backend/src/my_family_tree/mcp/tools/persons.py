@@ -132,7 +132,7 @@ async def person_get(ctx: ToolContext, payload: PersonGetInput) -> PersonDetail:
 class TraversalInput(BaseModel):
     person_id: UUID
     direction: Literal["ancestors", "descendants", "both"] = "ancestors"
-    max_generations: int = Field(default=4, ge=1, le=10)
+    max_generations: int = Field(default=2, ge=1, le=10)
 
 
 class TraversalNode(BaseModel):
@@ -149,8 +149,14 @@ class TraversalOutput(BaseModel):
 @registry.tool(
     name="person_traverse",
     description=(
-        "Walk the tree from a root person. Direction is ancestors, descendants, or both. "
-        "Bounded by `max_generations`."
+        "Walk the tree from a root person across multiple generations. Use this only "
+        "when the user explicitly asked for an ancestor or descendant chain; for "
+        "one-hop kin queries (children, parents, siblings, spouses) prefer "
+        "`person_relations`, and for counts prefer `person_count_relations`. "
+        "Direction is ancestors, descendants, or both. Bounded by `max_generations` "
+        "(default 2). Returns every reachable person up to the depth limit, which "
+        "can grow large quickly; for deep walks consider `traverse_and_summarize` so "
+        "the chat context stays compact."
     ),
     input_model=TraversalInput,
     output_model=TraversalOutput,
