@@ -30,6 +30,8 @@ from my_family_tree.llm.base import (
     ImageBlock,
     Message as LLMMessage,
     TextBlock,
+    ToolResultBlock,
+    ToolUseBlock,
 )
 from my_family_tree.mcp import tools  # noqa: F401  importing the package registers every tool
 from my_family_tree.mcp.host import ToolContext, ToolHost
@@ -372,18 +374,77 @@ def _user_attachment_doc_ids(content_json: list[dict[str, Any]]) -> list[UUID]:
 def _text_from_blocks(content_json: list[dict[str, Any]]) -> str:
     """Concatenate `text` blocks from a persisted message's `content_json`.
 
-    Used for both user and assistant rows: user messages may also carry
-    `attachment` blocks (resolved separately) and assistant messages may
-    carry `tool_use`, `tool_result`, `thinking`, or `proposals_summary`
-    blocks. Those are intentionally skipped: past tool calls were ephemeral
-    to the turn that made them and the LLM only needs the visible answer to
-    maintain conversational continuity. Old bracket-prefixed user messages
-    stay readable verbatim because they are stored as a single text block."""
+    Used for user rows, which may also carry `attachment` blocks resolved
+    separately. Assistant rows go through `_assistant_messages_from_content`
+    so prior tool calls and their results are rehydrated for the LLM."""
     return "".join(
         str(b.get("text", ""))
         for b in (content_json or [])
         if isinstance(b, dict) and b.get("type") == "text"
     )
+
+
+def _assistant_messages_from_content(
+    content_json: list[dict[str, Any]],
+) -> list[LLMMessage]:
+    """Split a persisted assistant `content_json` row into the (assistant,
+    tool?) LLM message pair the providers expect.
+
+    Joins all `text` blocks into one leading `TextBlock`, then appends one
+    `ToolUseBlock` per persisted `tool_use` block; emits a following tool
+    message carrying one `ToolResultBlock` per tool_use in matching order.
+    Skips `proposals_summary` and `thinking` blocks (live proposal status
+    is surfaced separately via session state, and thinking text is not
+    replayed to the next turn). When a persisted tool_use has no `output`,
+    synthesizes an error `ToolResultBlock` so the tool_use to tool_result
+    pairing the Anthropic and OpenAI APIs require is never violated.
+
+    Returns `[]` for a truly empty record (e.g., a turn that errored before
+    any block landed)."""
+    text_parts: list[str] = []
+    tool_uses: list[ToolUseBlock] = []
+    tool_results: list[ToolResultBlock] = []
+    for block in content_json or []:
+        if not isinstance(block, dict):
+            continue
+        btype = block.get("type")
+        if btype == "text":
+            text = str(block.get("text", ""))
+            if text:
+                text_parts.append(text)
+        elif btype == "tool_use":
+            call_id = str(block.get("id") or "")
+            name = str(block.get("name") or "")
+            raw_input = block.get("input")
+            input_dict = raw_input if isinstance(raw_input, dict) else {}
+            tool_uses.append(
+                ToolUseBlock(type="tool_use", id=call_id, name=name, input=input_dict)
+            )
+            output = block.get("output")
+            is_error = bool(block.get("is_error", False))
+            if output is None:
+                output = {"error": "tool result missing from persisted turn"}
+                is_error = True
+            tool_results.append(
+                ToolResultBlock(
+                    type="tool_result",
+                    tool_use_id=call_id,
+                    output=output,
+                    is_error=is_error,
+                )
+            )
+
+    assistant_blocks: list[ContentBlock] = []
+    if text_parts:
+        assistant_blocks.append(TextBlock(type="text", text="".join(text_parts)))
+    assistant_blocks.extend(tool_uses)
+
+    out: list[LLMMessage] = []
+    if assistant_blocks:
+        out.append(LLMMessage(role="assistant", content=assistant_blocks))
+    if tool_results:
+        out.append(LLMMessage(role="tool", content=list(tool_results)))
+    return out
 
 
 async def _history_messages(
@@ -431,11 +492,7 @@ async def _history_messages(
             if blocks:
                 messages.append(LLMMessage(role="user", content=blocks))
         elif m.role == MessageRole.assistant:
-            text = _text_from_blocks(m.content_json or [])
-            if text:
-                messages.append(
-                    LLMMessage(role="assistant", content=[TextBlock(type="text", text=text)])
-                )
+            messages.extend(_assistant_messages_from_content(m.content_json or []))
     return messages, remaining
 
 
