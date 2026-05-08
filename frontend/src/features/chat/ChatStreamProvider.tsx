@@ -43,14 +43,17 @@ export type ToolCall = {
   output?: unknown;
 };
 
+export type ThinkingEntry = { kind: "thinking"; id: string; text: string };
+export type ToolEntry = { kind: "tool" } & ToolCall;
+export type TraceEntry = ThinkingEntry | ToolEntry;
+
 export type ChatTurn = {
   id: string;
   role: "user" | "assistant";
   content: string;
-  thinking?: string;
   pending?: boolean;
   error?: boolean;
-  toolCalls?: ToolCall[];
+  trace?: TraceEntry[];
   proposalIds?: string[];
   attachments?: ChatAttachmentRef[];
 };
@@ -109,16 +112,18 @@ function turnsFromMessages(messages: MessageRow[]): ChatTurn[] {
         id: m.id,
         role: "assistant",
         content: "",
-        toolCalls: [],
+        trace: [],
         proposalIds: [],
       };
       for (const block of m.content as AssistantBlock[]) {
         if (block.type === "text") {
           turn.content += block.text;
         } else if (block.type === "tool_use") {
-          turn.toolCalls = [
-            ...(turn.toolCalls ?? []),
+          // Raw thinking is never persisted; rehydrated traces only carry tools.
+          turn.trace = [
+            ...(turn.trace ?? []),
             {
+              kind: "tool",
               id: block.id,
               name: block.name,
               status: block.is_error ? "error" : "ok",
@@ -263,9 +268,8 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
         id: pendingId,
         role: "assistant",
         content: "",
-        thinking: "",
         pending: true,
-        toolCalls: [],
+        trace: [],
         proposalIds: [],
       };
 
@@ -306,9 +310,8 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
                   id: pendingId,
                   role: "assistant",
                   content: "",
-                  thinking: "",
                   pending: true,
-                  toolCalls: [],
+                  trace: [],
                   proposalIds: [],
                 },
                 evt.event,
@@ -388,7 +391,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
   return <ChatStreamContext.Provider value={value}>{children}</ChatStreamContext.Provider>;
 }
 
-function applyEvent(turn: ChatTurn, type: string, data: SseEventData): ChatTurn {
+export function applyEvent(turn: ChatTurn, type: string, data: SseEventData): ChatTurn {
   switch (type) {
     case "text_delta": {
       const text = String(data?.text ?? "");
@@ -396,20 +399,32 @@ function applyEvent(turn: ChatTurn, type: string, data: SseEventData): ChatTurn 
     }
     case "thinking_delta": {
       const text = String(data?.text ?? "");
-      return { ...turn, thinking: (turn.thinking ?? "") + text };
+      const trace = turn.trace ?? [];
+      const last = trace[trace.length - 1];
+      if (last?.kind === "thinking") {
+        const next = trace.slice(0, -1);
+        next.push({ ...last, text: last.text + text });
+        return { ...turn, trace: next };
+      }
+      return {
+        ...turn,
+        trace: [...trace, { kind: "thinking", id: crypto.randomUUID(), text }],
+      };
     }
     case "tool_use_started": {
       const id = String(data?.id ?? "");
       const name = String(data?.name ?? "tool");
-      const calls = [...(turn.toolCalls ?? []), { id, name, status: "running" as const }];
-      return { ...turn, toolCalls: calls };
+      return {
+        ...turn,
+        trace: [...(turn.trace ?? []), { kind: "tool", id, name, status: "running" }],
+      };
     }
     case "tool_use_finished": {
       const id = String(data?.id ?? "");
       return {
         ...turn,
-        toolCalls: (turn.toolCalls ?? []).map((c) =>
-          c.id === id ? { ...c, input: data?.input ?? c.input } : c,
+        trace: (turn.trace ?? []).map((e) =>
+          e.kind === "tool" && e.id === id ? { ...e, input: data?.input ?? e.input } : e,
         ),
       };
     }
@@ -418,14 +433,14 @@ function applyEvent(turn: ChatTurn, type: string, data: SseEventData): ChatTurn 
       const isError = Boolean((data as { is_error?: boolean })?.is_error);
       return {
         ...turn,
-        toolCalls: (turn.toolCalls ?? []).map((c) =>
-          c.id === id
+        trace: (turn.trace ?? []).map((e) =>
+          e.kind === "tool" && e.id === id
             ? {
-                ...c,
+                ...e,
                 status: isError ? "error" : "ok",
                 output: (data as { output?: unknown })?.output,
               }
-            : c,
+            : e,
         ),
       };
     }
