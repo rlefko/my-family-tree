@@ -80,9 +80,11 @@ async def test_failing_handler_logs_end_with_error_and_propagates() -> None:
         raise RuntimeError("kaboom")
 
     host = _build_host(handler)
-    with structlog.testing.capture_logs() as logs:
-        with pytest.raises(RuntimeError, match="kaboom"):
-            await host.call("fake_echo", {})
+    with (
+        structlog.testing.capture_logs() as logs,
+        pytest.raises(RuntimeError, match="kaboom"),
+    ):
+        await host.call("fake_echo", {})
 
     events = [r["event"] for r in logs]
     assert events == ["tool.start", "tool.end"]
