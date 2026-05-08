@@ -14,9 +14,9 @@ import pytest
 
 from my_family_tree.api.routers.chat import (
     _SESSION_STATE_HEADER,
-    _ProposalRow,
     _assistant_messages_from_content,
     _format_session_state,
+    _ProposalRow,
 )
 from my_family_tree.llm.base import (
     Message as LLMMessage,
@@ -24,7 +24,6 @@ from my_family_tree.llm.base import (
     ToolResultBlock,
     ToolUseBlock,
 )
-
 
 # --- _assistant_messages_from_content --------------------------------------
 
@@ -136,9 +135,10 @@ def test_splitter_multiple_tools_preserve_stored_order() -> None:
     )
     asst, tool = out
     assert [b.id for b in asst.content if isinstance(b, ToolUseBlock)] == ["call_1", "call_2"]
-    assert [
-        b.tool_use_id for b in tool.content if isinstance(b, ToolResultBlock)
-    ] == ["call_1", "call_2"]
+    assert [b.tool_use_id for b in tool.content if isinstance(b, ToolResultBlock)] == [
+        "call_1",
+        "call_2",
+    ]
 
 
 @pytest.mark.unit
