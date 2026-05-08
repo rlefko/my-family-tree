@@ -83,8 +83,16 @@ class OpenAIProvider(LLMProvider):
             elif event.type == "tool_use_finished" and current_tool is not None:
                 try:
                     parsed = json.loads(current_tool["input"]) if current_tool["input"] else {}
-                except json.JSONDecodeError:
-                    parsed = {"_raw": current_tool["input"]}
+                except json.JSONDecodeError as e:
+                    # Truncated tool-call arguments: fail loudly instead of
+                    # wrapping in `{"_raw": ...}`, which would silently hand
+                    # garbage to the caller. The streaming agent loop has its
+                    # own structured recovery; the non-streaming `complete()`
+                    # surface should report the failure outright.
+                    raise LLMProviderError(
+                        f"openai tool-call arguments for {current_tool['name']!r} "
+                        f"could not be parsed: {e}"
+                    ) from e
                 result.blocks.append(
                     ToolUseBlock(
                         type="tool_use",
