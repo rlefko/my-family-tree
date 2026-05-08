@@ -18,9 +18,9 @@ from my_family_tree.api.routers.chat import (
     _AttachmentRef,
     _content_blocks_for_user_turn,
     _ResolvedAttachment,
+    _text_from_blocks,
     _user_attachment_doc_ids,
     _user_content_json,
-    _user_text_from_blocks,
 )
 from my_family_tree.llm.base import ImageBlock, TextBlock
 
@@ -140,13 +140,13 @@ def test_user_content_json_round_trips_attachment_block() -> None:
 
 
 @pytest.mark.unit
-def test_user_text_from_blocks_concatenates_text_only() -> None:
+def test_text_from_blocks_concatenates_text_only() -> None:
     blocks = [
         {"type": "text", "text": "hello "},
         {"type": "attachment", "document_id": str(uuid4()), "filename": "x"},
         {"type": "text", "text": "world"},
     ]
-    assert _user_text_from_blocks(blocks) == "hello world"
+    assert _text_from_blocks(blocks) == "hello world"
 
 
 @pytest.mark.unit

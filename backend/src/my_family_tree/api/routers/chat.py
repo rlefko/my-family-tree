@@ -369,22 +369,16 @@ def _user_attachment_doc_ids(content_json: list[dict[str, Any]]) -> list[UUID]:
     return out
 
 
-def _user_text_from_blocks(content_json: list[dict[str, Any]]) -> str:
-    """Concatenate text-block content from a persisted user message. Old
-    bracket-prefixed messages stay readable verbatim because they are stored
-    as a single text block."""
-    return "".join(
-        str(b.get("text", ""))
-        for b in (content_json or [])
-        if isinstance(b, dict) and b.get("type") == "text"
-    )
+def _text_from_blocks(content_json: list[dict[str, Any]]) -> str:
+    """Concatenate `text` blocks from a persisted message's `content_json`.
 
-
-def _assistant_text_from_blocks(content_json: list[dict[str, Any]]) -> str:
-    """Concatenate the final-text blocks from a persisted assistant message.
-    Tool-use blocks and proposals_summary are intentionally skipped: past
-    tool calls were ephemeral to that turn and the LLM only needs the visible
-    answer to maintain conversational continuity."""
+    Used for both user and assistant rows: user messages may also carry
+    `attachment` blocks (resolved separately) and assistant messages may
+    carry `tool_use`, `tool_result`, `thinking`, or `proposals_summary`
+    blocks. Those are intentionally skipped: past tool calls were ephemeral
+    to the turn that made them and the LLM only needs the visible answer to
+    maintain conversational continuity. Old bracket-prefixed user messages
+    stay readable verbatim because they are stored as a single text block."""
     return "".join(
         str(b.get("text", ""))
         for b in (content_json or [])
@@ -432,12 +426,12 @@ async def _history_messages(
     messages: list[LLMMessage] = []
     for m, resolved in enriched:
         if m.role == MessageRole.user:
-            text = _user_text_from_blocks(m.content_json or [])
+            text = _text_from_blocks(m.content_json or [])
             blocks = _content_blocks_for_user_turn(text, resolved)
             if blocks:
                 messages.append(LLMMessage(role="user", content=blocks))
         elif m.role == MessageRole.assistant:
-            text = _assistant_text_from_blocks(m.content_json or [])
+            text = _text_from_blocks(m.content_json or [])
             if text:
                 messages.append(
                     LLMMessage(role="assistant", content=[TextBlock(type="text", text=text)])
