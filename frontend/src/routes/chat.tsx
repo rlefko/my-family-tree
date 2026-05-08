@@ -436,16 +436,14 @@ function BusyFooter({
 }
 
 function ThinkingBlock({ entry, live }: { entry: ThinkingEntry; live: boolean }) {
-  // Each thinking burst is its own collapsible. Default to open while the
-  // turn is still streaming so the user can read along; default to closed
-  // after the turn completes so the bubble stays compact. After mount the
-  // state is uncontrolled so a click toggle never fights re-renders.
+  // Default open while streaming so the user can read along, closed once the turn
+  // ends so old bubbles stay compact. The user's toggle is preserved across re-renders.
   const [open, setOpen] = useState(live);
   const firstLine = entry.text.split(/\n+/).find((line) => line.trim().length > 0) ?? "";
   return (
     <details
       open={open}
-      onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}
+      onToggle={(e) => setOpen(e.currentTarget.open)}
       className="group rounded-md border border-amber-200 bg-amber-50 text-xs dark:border-amber-900 dark:bg-amber-950/40"
     >
       <summary
