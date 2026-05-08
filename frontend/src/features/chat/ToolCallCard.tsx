@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 import { Tooltip } from "@/components/ui/tooltip";
+import { STATUS_PILL } from "@/lib/status-styles";
 import { cn } from "@/lib/utils";
 
 import type { ToolCall } from "./ChatStreamProvider";
@@ -44,12 +45,6 @@ const STATUS_LABEL: Record<ToolCall["status"], string> = {
   running: "running",
   ok: "ok",
   error: "error",
-};
-
-const STATUS_CLASS: Record<ToolCall["status"], string> = {
-  running: "bg-amber-100 text-amber-800",
-  ok: "bg-emerald-100 text-emerald-800",
-  error: "bg-red-100 text-red-800",
 };
 
 function StatusIcon({ status }: { status: ToolCall["status"] }) {
@@ -149,7 +144,7 @@ export function ToolCallCard({ call }: { call: ToolCall }) {
         <span
           className={cn(
             "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
-            STATUS_CLASS[call.status],
+            STATUS_PILL[call.status],
           )}
         >
           <StatusIcon status={call.status} />

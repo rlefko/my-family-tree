@@ -7,17 +7,10 @@ import {
   useRejectProposal,
   type ProposalRow,
 } from "@/api/endpoints/proposals";
+import { STATUS_PILL } from "@/lib/status-styles";
 import { cn } from "@/lib/utils";
 
 import { ProposalDiff } from "./ProposalDiff";
-
-const STATUS_PILL: Record<string, string> = {
-  pending: "bg-amber-100 text-amber-800",
-  approved: "bg-emerald-100 text-emerald-800",
-  rejected: "bg-zinc-200 text-zinc-700",
-  expired: "bg-zinc-200 text-zinc-700",
-  failed: "bg-red-100 text-red-800",
-};
 
 export function ProposalList({ highlightIds = [] }: { highlightIds?: string[] }) {
   const { data, isLoading } = useProposals("pending");
@@ -77,7 +70,7 @@ export function ProposalList({ highlightIds = [] }: { highlightIds?: string[] })
                 <span
                   className={cn(
                     "rounded-full px-2 py-0.5 text-[10px]",
-                    STATUS_PILL[p.status] ?? "bg-zinc-100",
+                    STATUS_PILL[p.status] ?? STATUS_PILL.hidden,
                   )}
                 >
                   {p.status}
