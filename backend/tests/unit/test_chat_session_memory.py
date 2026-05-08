@@ -243,6 +243,57 @@ def test_splitter_preserves_request_user_input_output_for_rehydration() -> None:
 
 
 @pytest.mark.unit
+def test_splitter_preserves_traverse_and_summarize_trace_for_rehydration() -> None:
+    """The traversal subagent persists its inner trace inside `tool_use.output`
+    (alongside `summary` and `persons`). The splitter must round-trip the
+    output dict intact so the frontend can lift `output.trace` into the
+    nested tool card on reload, AND the next turn's LLM gets the structured
+    output it would have seen live."""
+    persisted = [
+        {
+            "type": "tool_use",
+            "id": "call_subagent",
+            "name": "traverse_and_summarize",
+            "input": {"person_id": "abc", "question": "who are X's sons?"},
+            "output": {
+                "summary": "X has two sons.",
+                "persons": [],
+                "trace": [
+                    {"type": "thinking", "text": "Need to call person_relations."},
+                    {
+                        "type": "tool_use",
+                        "id": "inner_1",
+                        "name": "person_relations",
+                        "input": {"relation": "children", "sex_filter": "male"},
+                        "output": {"results": [{"id": "s1", "display_name": "Son A"}]},
+                        "is_error": False,
+                    },
+                    {"type": "text", "text": "Found two sons."},
+                ],
+                "tokens_used": 1234,
+                "tool_calls_used": 1,
+            },
+            "is_error": False,
+        }
+    ]
+    out = _assistant_messages_from_content(persisted)
+    assert len(out) == 2
+    asst, tool = out
+    use = next(b for b in asst.content if isinstance(b, ToolUseBlock))
+    assert use.name == "traverse_and_summarize"
+
+    result = next(b for b in tool.content if isinstance(b, ToolResultBlock))
+    assert isinstance(result.output, dict)
+    assert result.output["summary"] == "X has two sons."
+    trace = result.output["trace"]
+    assert isinstance(trace, list)
+    assert trace[0]["type"] == "thinking"
+    assert trace[1]["type"] == "tool_use"
+    assert trace[1]["name"] == "person_relations"
+    assert trace[2]["type"] == "text"
+
+
+@pytest.mark.unit
 def test_splitter_pair_is_valid_llmmessage() -> None:
     """Sanity: the splitter returns real `LLMMessage` instances with
     matching roles, so the result can be appended directly to the message
