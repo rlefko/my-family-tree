@@ -28,8 +28,6 @@ import { cn } from "@/lib/utils";
 
 import { buildLayout, NODE_HEIGHT, NODE_WIDTH, UNION_HEIGHT, UNION_WIDTH } from "./layout";
 
-const SIBLING_TYPE = "sibling_of";
-
 type PersonCardProps = NodeProps<{ person: PersonNode; onSelect?: (id: string) => void }>;
 
 function SexBadge({ sex, className }: { sex: PersonNode["sex"]; className?: string }) {
@@ -170,8 +168,6 @@ function UnionNode({ data }: NodeProps<UnionNodeData>) {
 
 const nodeTypes = { person: PersonCard, union: UnionNode };
 
-export { buildLayout } from "./layout";
-
 export function FamilyTreeGraph({
   graph,
   onSelect,
@@ -181,28 +177,9 @@ export function FamilyTreeGraph({
   onSelect?: (id: string) => void;
   selectedId?: string | null;
 }) {
-  // Drop sibling_of from the visual layer; the layout uses it during
-  // generation assignment via inferSiblingParents but we never want to
-  // render those edges (siblings are implied by shared parents).
-  const filteredGraph = useMemo<TreeGraph>(
-    () => ({
-      persons: graph.persons,
-      relationships: graph.relationships.filter((r) => r.type !== SIBLING_TYPE),
-      couple_events: graph.couple_events ?? [],
-    }),
-    [graph],
-  );
   const { nodes, edges } = useMemo(
-    () =>
-      buildLayout(
-        {
-          persons: filteredGraph.persons,
-          relationships: graph.relationships,
-          couple_events: graph.couple_events ?? [],
-        },
-        { onSelect, selectedId },
-      ),
-    [graph.relationships, graph.couple_events, filteredGraph.persons, onSelect, selectedId],
+    () => buildLayout(graph, { onSelect, selectedId }),
+    [graph, onSelect, selectedId],
   );
 
   if (graph.persons.length === 0) {
