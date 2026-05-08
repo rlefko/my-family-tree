@@ -47,6 +47,12 @@ export type ThinkingEntry = { kind: "thinking"; id: string; text: string };
 export type ToolEntry = { kind: "tool" } & ToolCall;
 export type TraceEntry = ThinkingEntry | ToolEntry;
 
+export function traceSummary(trace: TraceEntry[]): string {
+  const toolCount = trace.reduce((n, e) => (e.kind === "tool" ? n + 1 : n), 0);
+  if (toolCount === 0) return "Reasoning summary";
+  return `Reasoned and used ${toolCount} tool${toolCount === 1 ? "" : "s"}`;
+}
+
 export type ChatTurn = {
   id: string;
   role: "user" | "assistant";
