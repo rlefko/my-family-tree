@@ -11,8 +11,8 @@
 
 import { Calendar, Loader2, MapPin, Plus, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+
+import { Markdown } from "@/components/Markdown";
 
 import {
   useAddEvent,
@@ -412,8 +412,8 @@ function DetailsPanel({
           Notes
         </div>
         {person.notes_md ? (
-          <div className="prose-chat rounded-md border border-border bg-card px-3 py-2 text-xs text-foreground">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{person.notes_md}</ReactMarkdown>
+          <div className="rounded-md border border-border bg-card px-3 py-2 text-xs text-foreground">
+            <Markdown content={person.notes_md} />
           </div>
         ) : (
           <div className="text-xs italic text-muted-foreground">
