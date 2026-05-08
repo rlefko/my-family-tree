@@ -11,7 +11,7 @@ A personal genealogy research workbench. Upload documents, extract evidence, que
 - **Backend**: Python 3.14, FastAPI, SQLAlchemy 2 + SQLModel, Alembic, Pydantic, arq
 - **DB**: Postgres 17 with `pgvector` (HNSW on `halfvec(3072)`), `pg_trgm`, GIN-FTS
 - **Storage**: MinIO locally, S3 in prod (boto3 with path-style)
-- **LLMs**: direct OpenAI + Anthropic SDKs, no LiteLLM. Default `gpt-5.5` with `reasoning.effort="high"`.
+- **LLMs**: direct OpenAI + Anthropic SDKs, no LiteLLM. Default `gpt-5` with `reasoning.effort="medium"`.
 - **Embeddings**: `text-embedding-3-large` (3072 dims)
 - **MCP**: official `mcp` Python SDK; stdio + Streamable HTTP
 - **Frontend**: TypeScript, React 18, Vite, Tailwind v4, shadcn/ui, TanStack Router (file-based) + Query, react-hook-form + zod

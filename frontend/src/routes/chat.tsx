@@ -468,20 +468,30 @@ function BusyFooter({
 }
 
 function ThinkingPill({ text, live }: { text: string; live: boolean }) {
-  // Show only the last few lines of the reasoning summary so the bubble
-  // doesn't grow unbounded while the model deliberates.
+  // While the turn is streaming, show the full reasoning summary in a
+  // scrollable panel so the user can read what the model is actually
+  // working through. After the turn completes, collapse to the last few
+  // lines so old turns stay compact in the scrollback.
+  if (live) {
+    return (
+      <Tooltip
+        content="OpenAI's reasoning summary while it deliberates. Raw thinking is never persisted; only the summary is shown."
+        side="bottom"
+      >
+        <div className="mb-2 flex w-full max-h-40 items-start gap-1.5 overflow-y-auto rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-900 cursor-help animate-pulse dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+          <Brain className="mt-[1px] h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400" />
+          <span className="whitespace-pre-wrap break-words">{text || "Thinking..."}</span>
+        </div>
+      </Tooltip>
+    );
+  }
   const tail = text.split(/\n+/).filter(Boolean).slice(-3).join(" · ");
   return (
     <Tooltip
       content="OpenAI's reasoning summary while it deliberates. Raw thinking is never persisted; only the summary is shown."
       side="bottom"
     >
-      <div
-        className={cn(
-          "mb-2 inline-flex max-w-full items-start gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-900 cursor-help dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200",
-          live ? "animate-pulse" : "",
-        )}
-      >
+      <div className="mb-2 inline-flex max-w-full items-start gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-900 cursor-help dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
         <Brain className="mt-[1px] h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400" />
         <span className="line-clamp-3 break-words">{tail || "Thinking..."}</span>
       </div>

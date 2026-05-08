@@ -4,6 +4,7 @@ path doesn't pay JSON-over-loopback costs."""
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
@@ -14,6 +15,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from my_family_tree.core.errors import CapabilityDeniedError
 from my_family_tree.core.logging import get_logger
 from my_family_tree.mcp.registry import Capability, ToolRegistry
+
+# Cap on individual string fields and list lengths in `tool.start` log lines
+# so a 200_000-char `note_create(body=...)` does not flood the log stream.
+_LOG_STRING_MAX = 500
+_LOG_LIST_MAX = 20
 
 if TYPE_CHECKING:
     from my_family_tree.core.config import Settings
@@ -94,5 +100,51 @@ class ToolHost:
                 f"but host has {self._context.capabilities!s}"
             )
         validated = tool.input_model.model_validate(payload)
-        log.debug("tool.call", name=name, tree_id=str(self._context.tree_id))
-        return await tool.handler(self._context, validated)
+        tree_id = str(self._context.tree_id)
+        log.info(
+            "tool.start",
+            name=name,
+            tree_id=tree_id,
+            capability=str(tool.capability),
+            input=_redact(payload),
+        )
+        started = time.perf_counter()
+        try:
+            result = await tool.handler(self._context, validated)
+        except Exception as e:
+            log.warning(
+                "tool.end",
+                name=name,
+                tree_id=tree_id,
+                duration_ms=round((time.perf_counter() - started) * 1000, 1),
+                ok=False,
+                error=str(e),
+            )
+            raise
+        log.info(
+            "tool.end",
+            name=name,
+            tree_id=tree_id,
+            duration_ms=round((time.perf_counter() - started) * 1000, 1),
+            ok=True,
+        )
+        return result
+
+
+def _redact(value: Any) -> Any:
+    """Recursively bound a JSON-safe value's strings and lists so a giant
+    `body` buried inside a nested propose payload can't flood the log
+    stream."""
+    if isinstance(value, str):
+        if len(value) > _LOG_STRING_MAX:
+            return f"{value[:_LOG_STRING_MAX]}...<truncated {len(value) - _LOG_STRING_MAX} chars>"
+        return value
+    if isinstance(value, dict):
+        return {k: _redact(v) for k, v in value.items()}
+    if isinstance(value, list):
+        if len(value) > _LOG_LIST_MAX:
+            head = [_redact(v) for v in value[:_LOG_LIST_MAX]]
+            head.append({"_truncated": f"{len(value) - _LOG_LIST_MAX} more items"})
+            return head
+        return [_redact(v) for v in value]
+    return value

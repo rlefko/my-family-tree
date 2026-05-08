@@ -48,7 +48,7 @@ methods, `complete()` and `stream()`, plus provider-neutral dataclasses
 `ThinkingBlock`, `StreamEvent`). Two adapters implement it:
 
 - `llm/openai_provider.py` targets the OpenAI Responses API. `reasoning.effort`
-  is plumbed through (`high` by default).
+  is plumbed through (`medium` by default).
 - `llm/anthropic_provider.py` targets the Anthropic Messages API. Extended
   thinking is enabled via a token budget mapped from `reasoning.effort`.
   `cache_control: ephemeral` is applied to the system prompt and tool catalog.

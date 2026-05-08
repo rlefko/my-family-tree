@@ -40,8 +40,8 @@ class AgentRun(SQLModel, table=True):
 
     model: str = Field(max_length=120, nullable=False)
     provider: str = Field(max_length=64, nullable=False)
-    budget_tokens: int = int_column(nullable=False, default=200_000)
-    budget_tool_calls: int = int_column(nullable=False, default=40)
+    budget_tokens: int = int_column(nullable=False, default=2_000_000)
+    budget_tool_calls: int = int_column(nullable=False, default=500)
     tokens_used: int = int_column(nullable=False, default=0)
     tool_calls_used: int = int_column(nullable=False, default=0)
 
