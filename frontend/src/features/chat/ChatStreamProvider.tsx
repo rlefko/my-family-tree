@@ -393,7 +393,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
   return <ChatStreamContext.Provider value={value}>{children}</ChatStreamContext.Provider>;
 }
 
-function applyEvent(turn: ChatTurn, type: string, data: SseEventData): ChatTurn {
+export function applyEvent(turn: ChatTurn, type: string, data: SseEventData): ChatTurn {
   switch (type) {
     case "text_delta": {
       const text = String(data?.text ?? "");
