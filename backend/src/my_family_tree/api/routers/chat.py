@@ -17,25 +17,14 @@ from sse_starlette.sse import EventSourceResponse
 from my_family_tree.agent.budgets import Budgets
 from my_family_tree.agent.loop import ChatAgent, ChatTurnEvent
 from my_family_tree.api.deps import LLMDep
+from my_family_tree.core.config import get_settings
 from my_family_tree.core.logging import get_logger
 from my_family_tree.core.time import utcnow
 from my_family_tree.db.session import session_scope
 from my_family_tree.llm.base import Message as LLMMessage, TextBlock
+from my_family_tree.mcp import tools  # noqa: F401  importing the package registers every tool
 from my_family_tree.mcp.host import ToolContext, ToolHost
 from my_family_tree.mcp.registry import Capability, get_registry
-from my_family_tree.mcp.tools import (  # noqa: F401  ensure side-effect imports happen
-    chunks,
-    claims,
-    conflicts,
-    documents,
-    events,
-    input,
-    persons,
-    places,
-    relationships,
-    sources,
-    stats,
-)
 from my_family_tree.models.agent_run import AgentRun
 from my_family_tree.models.conversation import Conversation
 from my_family_tree.models.enums import AgentRole, MessageRole, RunStatus
@@ -194,16 +183,24 @@ def _agent_for_request(
     *,
     agent_run_id: UUID,
 ) -> ChatAgent:
-    """Build a ChatAgent bound to this request's session factory and tree."""
-    session_factory = request.app.state.session_factory
+    """Build a ChatAgent bound to this request's session factory and tree.
+    Optional external services (`web_search`, `genealogy`, `external_ingest`)
+    are pulled from app state and threaded through both the `ToolContext`
+    (so handlers can call them) and the `ToolHost` (so the catalog hides
+    tools whose providers are unconfigured)."""
+    state = request.app.state
+    session_factory = state.session_factory
     ctx = ToolContext(
         session_factory=session_factory,
         tree_id=req.tree_id,
         capabilities=Capability.chat_default(),
         actor="agent",
         agent_run_id=agent_run_id,
+        web_search=getattr(state, "web_search", None),
+        genealogy=getattr(state, "genealogy", None),
+        external_ingest=getattr(state, "external_ingest", None),
     )
-    host = ToolHost(get_registry(), context=ctx)
+    host = ToolHost(get_registry(), context=ctx, settings=get_settings())
     provider, model = llm.resolve()
     return ChatAgent(
         provider=provider,

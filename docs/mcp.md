@@ -57,6 +57,32 @@ async def foo_search(ctx, payload: FooInput) -> FooOutput:
 Add the module name to `mcp/tools/__init__.py` so the import side effect
 fires.
 
+## External research tools
+
+The chat agent has six optional tools for reaching the public web and
+genealogy databases. Each is gated by an `enabled_when` predicate so the
+agent never sees a tool whose provider is unconfigured:
+
+| Tool                      | Capability             | `enabled_when`                             |
+| ------------------------- | ---------------------- | ------------------------------------------ |
+| `web_search`              | `WEB \| READ`          | `s.web_search.is_enabled`                  |
+| `web_fetch`               | `WEB \| READ`          | always (SSRF-guarded)                      |
+| `genealogy_search`        | `WEB \| READ`          | `s.genealogy.any_enabled`                  |
+| `wikitree_get_person`     | `WEB \| READ`          | `s.genealogy.wikitree_enabled`             |
+| `familysearch_get_person` | `WEB \| READ`          | `s.genealogy.familysearch_enabled`         |
+| `wikidata_get_entity`     | `WEB \| READ`          | `s.genealogy.wikidata_enabled`             |
+| `external_index_url`      | `WEB \| TRIVIAL_WRITE` | always (SSRF + size + content-type guards) |
+
+Gating is centralized in `ToolRegistry.available(capability=..., settings=...)`
+and `ToolRegistry.get(name, settings=...)`, so both the in-process
+`ToolHost` (chat agent) and the external `Server` (Streamable HTTP)
+honor it. See [external-research.md](external-research.md) for the
+complete provider matrix and configuration.
+
+To make a new tool optional, pass `enabled_when=lambda s: ...` to the
+`@registry.tool(...)` decorator. The chat agent's `ToolHost` filters the
+catalog by both capability and the active `Settings`.
+
 ## Running
 
 - stdio (Claude Desktop): `make mcp-stdio`

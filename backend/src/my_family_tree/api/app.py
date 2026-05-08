@@ -30,7 +30,10 @@ from my_family_tree.core.errors import LLMProviderError
 from my_family_tree.core.logging import configure_logging, get_logger
 from my_family_tree.db.session import make_engine, make_sessionmaker
 from my_family_tree.embed.client import build_embeddings_client
+from my_family_tree.external.genealogy import GenealogyService
+from my_family_tree.external.web_search import WebSearchService
 from my_family_tree.llm.registry import build_registry
+from my_family_tree.services.external_ingest import build_external_ingest_service
 from my_family_tree.storage.s3 import build_object_store
 
 log = get_logger(__name__)
@@ -53,12 +56,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # raise 502 only when actually called.
         log.warning("api.embeddings_unavailable", error=str(e))
         app.state.embeddings_client = None
+    app.state.web_search = WebSearchService.from_settings(settings.web_search)
+    app.state.genealogy = GenealogyService.from_settings(settings.genealogy)
+    app.state.external_ingest = build_external_ingest_service(
+        session_factory=app.state.session_factory,
+        storage=app.state.storage,
+        embeddings=app.state.embeddings_client,
+    )
     app.state.enqueue_pool = await create_pool(RedisSettings.from_dsn(settings.redis.url))
     log.info("api.startup", env=settings.app_env)
     try:
         yield
     finally:
         await app.state.enqueue_pool.close(close_connection_pool=True)
+        if app.state.web_search is not None:
+            await app.state.web_search.aclose()
+        if app.state.genealogy is not None:
+            await app.state.genealogy.aclose()
         await engine.dispose()
         log.info("api.shutdown")
 
