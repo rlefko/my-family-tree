@@ -342,10 +342,15 @@ function buildFamilyUnits(
   couples: Map<string, Union>,
   generation: Map<string, number>,
   coupleEventByPair: Map<string, { date?: string | null; place?: string | null; type: string }>,
-): { units: Map<string, FamilyUnit>; unitOfPerson: Map<string, string> } {
+): {
+  units: Map<string, FamilyUnit>;
+  unitOfPerson: Map<string, string>;
+  parentUnitOfPerson: Map<string, string>;
+} {
   const primary = pickPrimaryUnions(couples, parents, coupleEventByPair);
   const units = new Map<string, FamilyUnit>();
   const unitOfPerson = new Map<string, string>();
+  const parentUnitOfPerson = new Map<string, string>();
 
   for (const u of couples.values()) {
     const isPrimaryA = primary.get(u.a) === u.id;
@@ -383,12 +388,13 @@ function buildFamilyUnits(
   // on sorted unit id, so cousin-marriages don't re-root one branch under
   // the other. Only the unit that "owns" the child does the linking; a
   // couple unit is owned by both spouses, so we attach via whichever spouse
-  // appears first in the unit (canonical).
+  // appears first in the unit (canonical). We also record the chosen parent
+  // unit per person so the spouse-alignment pass can compare two spouses'
+  // ancestries even when only one of them owns the upward link.
   const claimed = new Set<string>();
   for (const [child, parentList] of parents) {
     const childUnitId = unitOfPerson.get(child);
     if (!childUnitId) continue;
-    if (claimed.has(childUnitId)) continue;
     const childUnit = units.get(childUnitId);
     if (!childUnit) continue;
 
@@ -407,6 +413,8 @@ function buildFamilyUnits(
       }
     }
     if (!chosen) continue;
+    parentUnitOfPerson.set(child, chosen);
+    if (claimed.has(childUnitId)) continue;
     childUnit.primaryParentUnitId = chosen;
     const parentUnit = units.get(chosen);
     if (parentUnit && !parentUnit.childUnitIds.includes(childUnitId)) {
@@ -415,7 +423,7 @@ function buildFamilyUnits(
     claimed.add(childUnitId);
   }
 
-  return { units, unitOfPerson };
+  return { units, unitOfPerson, parentUnitOfPerson };
 }
 
 function orderSiblings(units: Map<string, FamilyUnit>, personById: Map<string, PersonNode>): void {
@@ -545,6 +553,59 @@ function placeOrphanUnions(
   }
 }
 
+/**
+ * X anchor for a parent unit: heart center for couple units, card center
+ * for solo units. Returns null when nothing has been placed yet.
+ */
+function parentAnchorX(
+  unit: FamilyUnit | undefined,
+  personPos: Map<string, Point>,
+  unionPos: Map<string, Point>,
+): number | null {
+  if (!unit) return null;
+  if (unit.unionId !== undefined) {
+    const u = unionPos.get(unit.unionId);
+    return u ? u.x + UNION_WIDTH / 2 : null;
+  }
+  const p = personPos.get(unit.spouses[0]);
+  return p ? p.x + NODE_WIDTH / 2 : null;
+}
+
+/**
+ * In a couple unit where both spouses have known parent units, ensure the
+ * spouse on the LEFT is the one whose parents sit further LEFT in the
+ * generation above. Swapping a couple's spouses moves their card positions
+ * but leaves the union heart and any descendants untouched, because heart
+ * X is the midpoint of the two card centers and child X depends only on
+ * the heart, not on which spouse occupies which side.
+ */
+function alignSpousesWithParents(
+  units: Map<string, FamilyUnit>,
+  parentUnitOfPerson: Map<string, string>,
+  personPos: Map<string, Point>,
+  unionPos: Map<string, Point>,
+): void {
+  for (const unit of units.values()) {
+    if (unit.spouses.length !== 2 || unit.unionId === undefined) continue;
+    const [a, b] = unit.spouses;
+    const aParentUnitId = parentUnitOfPerson.get(a);
+    const bParentUnitId = parentUnitOfPerson.get(b);
+    if (!aParentUnitId || !bParentUnitId) continue;
+    if (aParentUnitId === bParentUnitId) continue;
+    const aPX = parentAnchorX(units.get(aParentUnitId), personPos, unionPos);
+    const bPX = parentAnchorX(units.get(bParentUnitId), personPos, unionPos);
+    if (aPX === null || bPX === null) continue;
+    if (aPX <= bPX) continue;
+
+    const aPos = personPos.get(a);
+    const bPos = personPos.get(b);
+    if (!aPos || !bPos) continue;
+    personPos.set(a, bPos);
+    personPos.set(b, aPos);
+    unit.spouses = [b, a];
+  }
+}
+
 function indexCoupleEvents(
   events: CoupleEvent[],
 ): Map<string, { date?: string | null; place?: string | null; type: string }> {
@@ -595,7 +656,7 @@ export function buildLayout(
   for (const p of graph.persons) personById.set(p.id, p);
 
   const generation = assignGenerations(graph.persons, parents, couples);
-  const { units } = buildFamilyUnits(
+  const { units, parentUnitOfPerson } = buildFamilyUnits(
     graph.persons,
     parents,
     couples,
@@ -605,6 +666,12 @@ export function buildLayout(
   orderSiblings(units, personById);
   const { personPos, unionPos } = assignCoordinates(units, personById);
   placeOrphanUnions(couples, unionPos, personPos);
+  alignSpousesWithParents(units, parentUnitOfPerson, personPos, unionPos);
+
+  const unitByUnionId = new Map<string, FamilyUnit>();
+  for (const unit of units.values()) {
+    if (unit.unionId !== undefined) unitByUnionId.set(unit.unionId, unit);
+  }
 
   const childSources = buildChildSources(parents, couples);
 
@@ -644,9 +711,23 @@ export function buildLayout(
 
   for (const u of couples.values()) {
     if (!unionPos.has(u.id)) continue;
+    const unit = unitByUnionId.get(u.id);
+    let left: string;
+    let right: string;
+    if (unit && unit.spouses.length === 2) {
+      left = unit.spouses[0];
+      right = unit.spouses[1];
+    } else {
+      // Orphan union: pick left/right by current X so handles point inward.
+      const aPos = personPos.get(u.a);
+      const bPos = personPos.get(u.b);
+      const aIsLeft = aPos && bPos ? aPos.x <= bPos.x : true;
+      left = aIsLeft ? u.a : u.b;
+      right = aIsLeft ? u.b : u.a;
+    }
     edges.push({
       id: `couple-l-${i++}`,
-      source: u.a,
+      source: left,
       target: u.id,
       sourceHandle: "right",
       targetHandle: "left",
@@ -655,7 +736,7 @@ export function buildLayout(
     });
     edges.push({
       id: `couple-r-${i++}`,
-      source: u.b,
+      source: right,
       target: u.id,
       sourceHandle: "left",
       targetHandle: "right",
