@@ -478,11 +478,8 @@ function ThinkingBlock({ entry, live }: { entry: ThinkingEntry; live: boolean })
 }
 
 function CollapsedTrace({ trace }: { trace: TraceEntry[] }) {
-  // Once the turn finishes, fold the whole trace into one summary row that
-  // defaults to closed. Switching the parent JSX shape (flat list -> this
-  // wrapper) remounts every inner ThinkingBlock and ToolCallCard, so each
-  // also resets to its closed default. The user can still expand any
-  // individual entry after opening the wrapper.
+  // Switching the parent JSX shape (flat list -> this wrapper) remounts every
+  // inner ThinkingBlock and ToolCallCard, resetting each to its closed default.
   return (
     <details className="group mb-2 rounded-md border border-border bg-muted/60 text-xs">
       <summary className="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-muted-foreground marker:hidden">
