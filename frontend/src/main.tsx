@@ -5,6 +5,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { Toaster } from "sonner";
 
+import { ThemeProvider, useTheme } from "@/components/theme/ThemeProvider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { queryClient } from "@/lib/query-client";
 import "@/styles/globals.css";
@@ -22,14 +23,23 @@ declare module "@tanstack/react-router" {
 const root = document.getElementById("root");
 if (!root) throw new Error("missing #root element");
 
+function ThemedToaster() {
+  const { resolvedTheme } = useTheme();
+  return (
+    <Toaster position="bottom-right" richColors closeButton theme={resolvedTheme} />
+  );
+}
+
 ReactDOM.createRoot(root).render(
   <React.StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider delayDuration={150} skipDelayDuration={300}>
-        <RouterProvider router={router} />
-        <Toaster position="bottom-right" richColors closeButton />
-        {import.meta.env.DEV ? <ReactQueryDevtools initialIsOpen={false} /> : null}
-      </TooltipProvider>
-    </QueryClientProvider>
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider delayDuration={150} skipDelayDuration={300}>
+          <RouterProvider router={router} />
+          <ThemedToaster />
+          {import.meta.env.DEV ? <ReactQueryDevtools initialIsOpen={false} /> : null}
+        </TooltipProvider>
+      </QueryClientProvider>
+    </ThemeProvider>
   </React.StrictMode>,
 );
