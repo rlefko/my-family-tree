@@ -215,8 +215,8 @@ class Settings(BaseSettings):
     openai_api_key: SecretStr | None = None
     anthropic_api_key: SecretStr | None = None
     llm_default_provider: Literal["openai", "anthropic"] = "openai"
-    llm_default_model: str = "gpt-5.5"
-    llm_default_reasoning_effort: Literal["none", "low", "medium", "high", "xhigh"] = "high"
+    llm_default_model: str = "gpt-5"
+    llm_default_reasoning_effort: Literal["none", "low", "medium", "high", "xhigh"] = "medium"
     llm_embedding_model: str = "text-embedding-3-large"
     llm_embedding_dims: int = 3072
     llm_vision_model: str = "gpt-4o-mini"

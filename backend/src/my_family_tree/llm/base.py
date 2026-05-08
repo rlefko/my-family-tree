@@ -65,7 +65,7 @@ class ToolSpec:
 
 @dataclass(slots=True)
 class ReasoningConfig:
-    effort: ReasoningEffort = "high"
+    effort: ReasoningEffort = "medium"
     """Maps to OpenAI `reasoning.effort` and Anthropic extended thinking budget."""
 
 

@@ -46,7 +46,7 @@ def build_registry(settings: LLMSettings) -> ProviderRegistry:
             ),
             default_model=settings.default_model
             if settings.default_provider == "openai"
-            else "gpt-5.5",
+            else "gpt-5",
         )
     if settings.anthropic_api_key is not None:
         providers["anthropic"] = AnthropicProvider(

@@ -34,9 +34,9 @@ log = get_logger(__name__)
 
 class OpenAIProvider(LLMProvider):
     name = "openai"
-    default_model = "gpt-5.5"
+    default_model = "gpt-5"
 
-    def __init__(self, client: AsyncOpenAI, *, default_model: str = "gpt-5.5") -> None:
+    def __init__(self, client: AsyncOpenAI, *, default_model: str = "gpt-5") -> None:
         self._client = client
         self.default_model = default_model
 
