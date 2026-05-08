@@ -14,7 +14,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { useConversations } from "@/api/endpoints/conversations";
-import { uploadDocumentRequest } from "@/api/endpoints/documents";
+import { documentRawUrl, uploadDocumentRequest } from "@/api/endpoints/documents";
 import { Tooltip } from "@/components/ui/tooltip";
 import { ChatAttachments, type ChatAttachment } from "@/features/chat/ChatAttachments";
 import { InlineProposals } from "@/features/chat/InlineProposals";
@@ -363,7 +363,7 @@ function UserAttachments({ items }: { items: ChatAttachmentRef[] }) {
     <div className="mb-2 flex flex-wrap gap-2">
       {items.map((a) => {
         const isImage = (a.mimeType ?? "").startsWith("image/") || a.kind === "image";
-        const rawUrl = `/api/v1/documents/${a.documentId}/raw`;
+        const rawUrl = documentRawUrl(a.documentId);
         if (isImage) {
           return (
             <a
