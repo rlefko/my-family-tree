@@ -43,10 +43,10 @@ export function ChatAttachments({
             className={cn(
               "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs",
               it.status === "uploading"
-                ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+                ? "border-primary/30 bg-primary/10 text-primary"
                 : it.status === "ready"
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                  : "border-red-200 bg-red-50 text-red-700",
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300"
+                  : "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300",
             )}
           >
             {it.status === "uploading" ? (

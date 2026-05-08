@@ -29,9 +29,9 @@ export function DocumentSearch({ documentId, onPickResult }: Props) {
     .filter((t) => t.length > 1);
 
   return (
-    <div className="rounded-md border border-zinc-200 bg-white p-3">
+    <div className="rounded-md border border-border bg-card p-3">
       <form onSubmit={onSubmit} className="flex items-center gap-2">
-        <Search className="h-4 w-4 text-zinc-400" />
+        <Search className="h-4 w-4 text-muted-foreground" />
         <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -41,7 +41,7 @@ export function DocumentSearch({ documentId, onPickResult }: Props) {
         <button
           type="submit"
           disabled={search.isPending || query.trim().length === 0}
-          className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
+          className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
         >
           {search.isPending ? "Searching..." : "Search"}
         </button>
@@ -49,17 +49,17 @@ export function DocumentSearch({ documentId, onPickResult }: Props) {
       {search.isPending ? (
         <ul className="mt-3 space-y-2">
           {[0, 1, 2].map((i) => (
-            <li key={i} className="h-14 animate-pulse rounded border border-zinc-100 bg-zinc-50" />
+            <li key={i} className="h-14 animate-pulse rounded border border-border bg-muted" />
           ))}
         </ul>
       ) : null}
       {search.error ? (
-        <p className="mt-3 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700">
+        <p className="mt-3 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
           Search failed: {(search.error as { message?: string }).message ?? String(search.error)}
         </p>
       ) : null}
       {search.data && search.data.items.length === 0 ? (
-        <p className="mt-3 text-xs italic text-zinc-500">No matches.</p>
+        <p className="mt-3 text-xs italic text-muted-foreground">No matches.</p>
       ) : null}
       {search.data && search.data.items.length > 0 ? (
         <ul className="mt-3 space-y-2">
@@ -87,10 +87,10 @@ function ResultCard({
     <button
       type="button"
       onClick={() => onPick(hit.document_id, hit.page)}
-      className="flex w-full flex-col items-start gap-1 rounded border border-zinc-200 bg-white px-3 py-2 text-left hover:border-indigo-200 hover:bg-indigo-50/30"
+      className="flex w-full flex-col items-start gap-1 rounded border border-border bg-card px-3 py-2 text-left hover:border-primary/30 hover:bg-primary/5"
     >
       <div className="flex w-full items-center gap-2 text-xs">
-        <span className="truncate font-medium text-zinc-900">
+        <span className="truncate font-medium text-foreground">
           {hit.document_filename ?? hit.document_id}
         </span>
         {hit.document_kind ? (
@@ -99,9 +99,9 @@ function ResultCard({
           </Badge>
         ) : null}
         {hit.page ? <Badge variant="secondary">p.{hit.page}</Badge> : null}
-        <span className="ml-auto text-[10px] text-zinc-400">{(hit.score * 100).toFixed(0)}%</span>
+        <span className="ml-auto text-[10px] text-muted-foreground">{(hit.score * 100).toFixed(0)}%</span>
       </div>
-      <p className="line-clamp-3 text-xs text-zinc-700">
+      <p className="line-clamp-3 text-xs text-foreground">
         <HighlightedSnippet text={hit.content} tokens={tokens} />
       </p>
     </button>
@@ -120,7 +120,7 @@ function HighlightedSnippet({ text, tokens }: { text: string; tokens: string[] }
       {parts.map((part, i) => {
         const key = `${i}:${part.length}`;
         return re.test(part) ? (
-          <mark key={key} className="rounded bg-amber-100 px-0.5">
+          <mark key={key} className="rounded bg-amber-100 px-0.5 text-amber-900 dark:bg-amber-900/50 dark:text-amber-100">
             {part}
           </mark>
         ) : (

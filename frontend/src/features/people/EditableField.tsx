@@ -89,10 +89,10 @@ export function EditableField(props: Props) {
             onChange={async (e) => {
               await props.onSave(e.target.checked);
             }}
-            className="h-4 w-4 rounded border-zinc-300 text-indigo-600 focus:ring-indigo-500"
+            className="h-4 w-4 rounded border-input bg-background text-primary focus:ring-ring"
           />
-          <span className="text-zinc-700">{value ? "Living" : "Deceased"}</span>
-          {saving ? <Loader2 className="h-3 w-3 animate-spin text-zinc-400" /> : null}
+          <span className="text-foreground">{value ? "Living" : "Deceased"}</span>
+          {saving ? <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" /> : null}
         </label>
       </FieldShell>
     );
@@ -107,14 +107,14 @@ export function EditableField(props: Props) {
           disabled={readonly}
           className={cn(
             "group flex w-full items-start gap-2 rounded text-left text-sm",
-            readonly ? "cursor-default" : "cursor-text hover:bg-zinc-50",
+            readonly ? "cursor-default" : "cursor-text hover:bg-muted",
           )}
         >
-          <span className={cn("flex-1", value ? "text-zinc-900" : "italic text-zinc-400")}>
-            {typeof value === "string" && value ? value : "—"}
+          <span className={cn("flex-1", value ? "text-foreground" : "italic text-muted-foreground")}>
+            {typeof value === "string" && value ? value : "-"}
           </span>
           {!readonly ? (
-            <Pencil className="mt-0.5 h-3 w-3 shrink-0 text-zinc-300 opacity-0 transition-opacity group-hover:opacity-100" />
+            <Pencil className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground/60 opacity-0 transition-opacity group-hover:opacity-100" />
           ) : null}
         </button>
       </FieldShell>
@@ -145,9 +145,9 @@ export function EditableField(props: Props) {
             onBlur={() => void commit(draft || null)}
             onKeyDown={onKeyDown}
             disabled={saving}
-            className="flex-1 rounded border border-zinc-300 bg-white px-2 py-1 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className="flex-1 rounded border border-input bg-background px-2 py-1 text-sm shadow-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
           >
-            <option value="">—</option>
+            <option value="">-</option>
             {props.options.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
@@ -166,7 +166,7 @@ export function EditableField(props: Props) {
             disabled={saving}
             placeholder={props.placeholder}
             rows={3}
-            className="flex-1 resize-y rounded border border-zinc-300 bg-white px-2 py-1 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className="flex-1 resize-y rounded border border-input bg-background px-2 py-1 text-sm shadow-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
           />
         ) : (
           <input
@@ -180,7 +180,7 @@ export function EditableField(props: Props) {
             onKeyDown={onKeyDown}
             disabled={saving}
             placeholder={props.placeholder}
-            className="flex-1 rounded border border-zinc-300 bg-white px-2 py-1 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className="flex-1 rounded border border-input bg-background px-2 py-1 text-sm shadow-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
           />
         )}
         <button
@@ -190,7 +190,7 @@ export function EditableField(props: Props) {
             void commit(draft.trim() || null);
           }}
           disabled={saving}
-          className="rounded border border-emerald-300 bg-emerald-50 p-1 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+          className="rounded border border-emerald-300 bg-emerald-50 p-1 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200 dark:hover:bg-emerald-900/50"
           aria-label="Save"
         >
           {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
@@ -203,7 +203,7 @@ export function EditableField(props: Props) {
             setDraft(typeof value === "string" ? value : "");
           }}
           disabled={saving}
-          className="rounded border border-zinc-300 bg-white p-1 text-zinc-600 hover:bg-zinc-50 disabled:opacity-50"
+          className="rounded border border-input bg-background p-1 text-muted-foreground hover:bg-muted disabled:opacity-50"
           aria-label="Cancel"
         >
           <X className="h-3 w-3" />
@@ -225,8 +225,8 @@ function FieldShell({
   const labelEl = (
     <span
       className={cn(
-        "text-[11px] font-semibold uppercase tracking-wide text-zinc-500",
-        tooltip ? "border-b border-dotted border-zinc-300 cursor-help" : "",
+        "text-[11px] font-semibold uppercase tracking-wide text-muted-foreground",
+        tooltip ? "border-b border-dotted border-border cursor-help" : "",
       )}
     >
       {label}
