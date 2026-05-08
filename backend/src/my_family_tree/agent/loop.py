@@ -82,6 +82,7 @@ class ChatAgent:
         tool_calls_used = 0
         history = list(messages)
         proposal_ids: list[str] = []
+        pending_user_input: dict[str, Any] | None = None
 
         while True:
             assistant_blocks: list[TextBlock | ToolUseBlock] = []
@@ -125,6 +126,21 @@ class ChatAgent:
                         and result.output.get("proposal_id") is not None
                     ):
                         proposal_ids.append(str(result.output["proposal_id"]))
+                    if (
+                        block.name == "request_user_input"
+                        and not result.is_error
+                        and pending_user_input is None
+                    ):
+                        # Snapshot the question/options from the parsed input so
+                        # we can emit `needs_input` once the provider stream
+                        # closes; if the model issued additional tool calls in
+                        # the same turn we still want them to execute and
+                        # persist before we halt.
+                        pending_user_input = {
+                            "question": block.input.get("reason") or "",
+                            "options": block.input.get("options"),
+                            "schema_hint": block.input.get("schema_hint"),
+                        }
                     # Re-emit `tool_use_finished` with the parsed input now
                     # that we have it; this is what the chat UI shows in the
                     # tool-call card. The earlier bare `tool_use_finished`
@@ -168,6 +184,26 @@ class ChatAgent:
                 self.budgets.check(tokens_used=tokens_used, tool_calls_used=tool_calls_used)
             except Exception as e:
                 yield ChatTurnEvent(type="error", payload={"message": str(e)})
+                return
+
+            if pending_user_input is not None:
+                # The agent asked for clarification. Surface a `needs_input`
+                # event with the question/options so the UI can render an
+                # inline prompt, then close out the turn. The user's reply
+                # arrives as the next user message and the loop resumes from
+                # `run_turn` with full history.
+                yield ChatTurnEvent(
+                    type="needs_input",
+                    payload=dict(pending_user_input),
+                )
+                yield ChatTurnEvent(
+                    type="done",
+                    payload={
+                        "tokens_used": tokens_used,
+                        "tool_calls_used": tool_calls_used,
+                        "proposal_ids": list(proposal_ids),
+                    },
+                )
                 return
 
             # Re-enter the provider whenever we have tool results to respond
