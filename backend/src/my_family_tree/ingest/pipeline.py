@@ -163,6 +163,19 @@ async def _extract_text(
                 extraction_method=ExtractionMethod.verbatim,
             )
         )
+    elif doc.kind == DocumentKind.web:
+        # Web documents are stored as already-cleaned UTF-8 text by
+        # `services.external_ingest.ingest_web_url`; we just decode and
+        # persist verbatim. Re-running the text extractor would just
+        # re-collapse whitespace we already collapsed.
+        session.add(
+            DocumentText(
+                document_id=doc.id,
+                page=None,
+                content=raw.decode("utf-8", errors="replace"),
+                extraction_method=ExtractionMethod.verbatim,
+            )
+        )
     elif doc.kind == DocumentKind.gedcom:
         for record in gedcom_extractor.parse(raw):
             session.add(

@@ -5,6 +5,7 @@
 - [Ingestion pipeline](ingestion.md)
 - [Agent](agent.md)
 - [MCP server](mcp.md)
+- [External research](external-research.md)
 - [Conflict detection + resolution](conflicts.md)
 - [Deployment](deployment.md)
 - [Contributing](contributing.md)

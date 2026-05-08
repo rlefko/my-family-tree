@@ -11,12 +11,15 @@ from my_family_tree.mcp.tools import (
     conflicts,
     documents,
     events,
+    external_ingest,
+    genealogy,
     input,
     persons,
     places,
     relationships,
     sources,
     stats,
+    web_search,
 )
 
 # Reference each module so the import-time side effects (registering tools on
@@ -27,10 +30,13 @@ __all__ = [
     "conflicts",
     "documents",
     "events",
+    "external_ingest",
+    "genealogy",
     "input",
     "persons",
     "places",
     "relationships",
     "sources",
     "stats",
+    "web_search",
 ]

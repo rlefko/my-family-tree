@@ -103,6 +103,45 @@ class WebSearchView:
     provider: Literal["", "tavily", "brave", "openai_native", "anthropic_native"]
     tavily_api_key: SecretStr | None
     brave_api_key: SecretStr | None
+    max_results: int
+    request_timeout_s: float
+    max_bytes: int
+
+    @property
+    def is_enabled(self) -> bool:
+        """True when a REST web-search provider is configured with a key.
+
+        Native provider settings (`openai_native`, `anthropic_native`) gate
+        in-LLM tool calls handled by the provider, not the MCP `web_search`
+        tool, so they intentionally don't flip this flag.
+        """
+        if self.provider == "tavily":
+            return self.tavily_api_key is not None
+        if self.provider == "brave":
+            return self.brave_api_key is not None
+        return False
+
+
+@dataclass(slots=True, frozen=True)
+class GenealogyView:
+    familysearch_client_id: SecretStr | None
+    familysearch_client_secret: SecretStr | None
+    familysearch_environment: Literal["integration", "beta", "production"]
+    wikitree_enabled: bool
+    genealogy_user_agent: str
+    wikidata_enabled: bool
+    max_results: int
+    request_timeout_s: float
+
+    @property
+    def familysearch_enabled(self) -> bool:
+        return (
+            self.familysearch_client_id is not None and self.familysearch_client_secret is not None
+        )
+
+    @property
+    def any_enabled(self) -> bool:
+        return self.wikitree_enabled or self.wikidata_enabled or self.familysearch_enabled
 
 
 @dataclass(slots=True, frozen=True)
@@ -201,6 +240,19 @@ class Settings(BaseSettings):
     web_search_provider: Literal["", "tavily", "brave", "openai_native", "anthropic_native"] = ""
     tavily_api_key: SecretStr | None = None
     brave_api_key: SecretStr | None = None
+    web_search_max_results: int = 8
+    web_search_request_timeout_s: float = 20.0
+    web_search_max_bytes: int = 5_000_000
+
+    # --- Genealogy ---------------------------------------------------------
+    familysearch_client_id: SecretStr | None = None
+    familysearch_client_secret: SecretStr | None = None
+    familysearch_environment: Literal["integration", "beta", "production"] = "production"
+    wikitree_enabled: bool = True
+    genealogy_user_agent: str = "my-family-tree/0.1 (+https://github.com/rlefkowitz/my-family-tree)"
+    wikidata_enabled: bool = True
+    genealogy_max_results: int = 10
+    genealogy_request_timeout_s: float = 30.0
 
     # --- Observability -----------------------------------------------------
     otel_exporter_otlp_endpoint: str | None = None
@@ -280,6 +332,22 @@ class Settings(BaseSettings):
             provider=self.web_search_provider,
             tavily_api_key=self.tavily_api_key,
             brave_api_key=self.brave_api_key,
+            max_results=self.web_search_max_results,
+            request_timeout_s=self.web_search_request_timeout_s,
+            max_bytes=self.web_search_max_bytes,
+        )
+
+    @property
+    def genealogy(self) -> GenealogyView:
+        return GenealogyView(
+            familysearch_client_id=self.familysearch_client_id,
+            familysearch_client_secret=self.familysearch_client_secret,
+            familysearch_environment=self.familysearch_environment,
+            wikitree_enabled=self.wikitree_enabled,
+            genealogy_user_agent=self.genealogy_user_agent,
+            wikidata_enabled=self.wikidata_enabled,
+            max_results=self.genealogy_max_results,
+            request_timeout_s=self.genealogy_request_timeout_s,
         )
 
     @property
@@ -298,6 +366,7 @@ LLMSettings = LLMView
 OCRSettings = OCRView
 MCPSettings = MCPView
 WebSearchSettings = WebSearchView
+GenealogySettings = GenealogyView
 ObservabilitySettings = ObservabilityView
 
 
