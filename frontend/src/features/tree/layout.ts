@@ -455,18 +455,15 @@ function assignCoordinates(
   personById: Map<string, PersonNode>,
 ): { personPos: Map<string, Point>; unionPos: Map<string, Point> } {
   const subtreeWidth = new Map<string, number>();
-  const computeWidth = (unitId: string, seen: Set<string>): number => {
+  const computeWidth = (unitId: string): number => {
     const cached = subtreeWidth.get(unitId);
     if (cached !== undefined) return cached;
-    if (seen.has(unitId))
-      return unitBarWidth(units.get(unitId) ?? ({ spouses: [""] } as FamilyUnit));
-    seen.add(unitId);
     const unit = units.get(unitId);
     if (!unit) return 0;
     const ownBar = unitBarWidth(unit);
     let childW = 0;
     for (let i = 0; i < unit.childUnitIds.length; i++) {
-      childW += computeWidth(unit.childUnitIds[i], seen);
+      childW += computeWidth(unit.childUnitIds[i]);
       if (i > 0) childW += NODESEP;
     }
     const w = Math.max(ownBar, childW);
@@ -489,16 +486,12 @@ function assignCoordinates(
       personById.get(ub?.spouses[0] ?? ""),
     );
   });
-  const seen = new Set<string>();
-  for (const id of rootIds) computeWidth(id, seen);
+  for (const id of rootIds) computeWidth(id);
 
   const personPos = new Map<string, Point>();
   const unionPos = new Map<string, Point>();
-  const placed = new Set<string>();
 
   const place = (unitId: string, leftEdge: number) => {
-    if (placed.has(unitId)) return;
-    placed.add(unitId);
     const unit = units.get(unitId);
     if (!unit) return;
     const w = subtreeWidth.get(unitId) ?? unitBarWidth(unit);
