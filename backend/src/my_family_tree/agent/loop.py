@@ -4,12 +4,17 @@ provider stops or budgets are exhausted."""
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from my_family_tree.agent.budgets import Budgets
+from my_family_tree.agent.subagent_events import (
+    SubagentEventSink,
+    subagent_event_sink_scope,
+)
 from my_family_tree.agent.system_prompt import CHAT_SYSTEM_PROMPT
 from my_family_tree.core.logging import get_logger
 from my_family_tree.llm.base import (
@@ -24,6 +29,23 @@ from my_family_tree.llm.base import (
 )
 from my_family_tree.mcp.host import ToolHost
 
+# Sentinel pushed onto the per-call event queue when a tool task finishes,
+# so the drainer can break out of `await queue.get()` without polling.
+_QUEUE_DONE: object = object()
+
+
+class _QueueSink:
+    """Subagent event sink that pushes each event onto a per-call asyncio queue
+    the parent loop drains in lockstep with the tool task."""
+
+    __slots__ = ("_queue",)
+
+    def __init__(self, queue: asyncio.Queue[Any]) -> None:
+        self._queue = queue
+
+    def emit(self, event: dict[str, Any]) -> None:
+        self._queue.put_nowait(event)
+
 log = get_logger(__name__)
 
 
@@ -37,6 +59,7 @@ class ChatTurnEvent:
         "tool_use_started",
         "tool_use_finished",
         "tool_result",
+        "subagent_event",
         "usage",
         "done",
         "needs_input",
@@ -111,7 +134,38 @@ class ChatAgent:
                 elif event.type == "tool_use_input_delta" and current_tool is not None:
                     current_tool["input"] += event.tool_input_delta or ""
                 elif event.type == "tool_use_finished" and current_tool is not None:
-                    block, result = await self._execute_tool(current_tool)
+                    parent_tool_id = current_tool["id"]
+                    sub_queue: asyncio.Queue[Any] = asyncio.Queue()
+                    sink: SubagentEventSink = _QueueSink(sub_queue)
+
+                    async def _exec_with_sentinel(
+                        tool: dict[str, Any],
+                        queue: asyncio.Queue[Any] = sub_queue,
+                    ) -> tuple[ToolUseBlock, ToolResultBlock]:
+                        try:
+                            return await self._execute_tool(tool)
+                        finally:
+                            queue.put_nowait(_QUEUE_DONE)
+
+                    with subagent_event_sink_scope(sink):
+                        # The task snapshots the contextvar at create_task
+                        # time, so it carries the sink even after the with
+                        # block resets the parent context.
+                        tool_task = asyncio.create_task(_exec_with_sentinel(current_tool))
+
+                    while True:
+                        item = await sub_queue.get()
+                        if item is _QUEUE_DONE:
+                            break
+                        yield ChatTurnEvent(
+                            type="subagent_event",
+                            payload={
+                                "parent_tool_use_id": parent_tool_id,
+                                "event": item,
+                            },
+                        )
+
+                    block, result = await tool_task
                     assistant_blocks.append(block)
                     if current_text:
                         assistant_blocks.insert(
