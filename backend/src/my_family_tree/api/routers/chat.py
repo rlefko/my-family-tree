@@ -396,20 +396,11 @@ def _text_from_blocks(content_json: list[dict[str, Any]]) -> str:
 def _assistant_messages_from_content(
     content_json: list[dict[str, Any]],
 ) -> list[LLMMessage]:
-    """Split a persisted assistant `content_json` row into the (assistant,
-    tool?) LLM message pair the providers expect.
-
-    Joins all `text` blocks into one leading `TextBlock`, then appends one
-    `ToolUseBlock` per persisted `tool_use` block; emits a following tool
-    message carrying one `ToolResultBlock` per tool_use in matching order.
-    Skips `proposals_summary` and `thinking` blocks (live proposal status
-    is surfaced separately via session state, and thinking text is not
-    replayed to the next turn). When a persisted tool_use has no `output`,
-    synthesizes an error `ToolResultBlock` so the tool_use to tool_result
-    pairing the Anthropic and OpenAI APIs require is never violated.
-
-    Returns `[]` for a truly empty record (e.g., a turn that errored before
-    any block landed)."""
+    """Rehydrate a persisted assistant row into the (assistant, tool?) LLM
+    message pair the providers expect, skipping `proposals_summary` and
+    `thinking` blocks. A `tool_use` with no recorded `output` synthesizes
+    an error `ToolResultBlock` so the tool_use to tool_result pairing the
+    Anthropic and OpenAI APIs require is never violated."""
     text_parts: list[str] = []
     tool_uses: list[ToolUseBlock] = []
     tool_results: list[ToolResultBlock] = []
@@ -515,10 +506,8 @@ _SUBJECT_DISPATCH: dict[
 def _proposal_subject(
     action: ProposalAction, target_type: SubjectType | None, payload: dict[str, Any]
 ) -> str:
-    """One-line summary of a proposal's payload, dispatched on
-    `(action, target_type)`. Falls back to a truncated JSON dump for
-    combinations the dispatch table does not cover so unknown shapes
-    never raise."""
+    """One-line summary dispatched on `(action, target_type)`, falling back
+    to a truncated JSON dump for shapes the dispatch table does not cover."""
     handler = _SUBJECT_DISPATCH.get((action, target_type))
     if handler is not None:
         return handler(payload)
@@ -526,9 +515,8 @@ def _proposal_subject(
 
 
 def _format_session_state(rows: list[_ProposalRow]) -> str:
-    """Render proposal rows into the body of the [Session state] user
-    message. Returns '' for an empty list so the caller can skip the
-    injection entirely instead of feeding the model an empty header."""
+    """Render proposal rows into the [Session state] block, or '' when
+    there is nothing to render so the caller can skip the injection."""
     if not rows:
         return ""
     lines: list[str] = [_SESSION_STATE_HEADER]
