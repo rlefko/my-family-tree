@@ -12,10 +12,12 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.types import Float
 
 from my_family_tree.mcp.host import ToolContext
 from my_family_tree.mcp.registry import Capability
 from my_family_tree.mcp.tools.chunks import HybridSearchInput, hybrid_search
+from my_family_tree.models.chunk import Chunk
 
 
 @pytest.mark.unit
@@ -102,6 +104,24 @@ async def test_hybrid_search_uses_caller_embedding_unchanged(
     )
     embeddings.embed.assert_not_awaited()
     assert captured["embedding"] == [0.5] * 3072
+
+
+@pytest.mark.unit
+def test_cosine_distance_expression_returns_float_type() -> None:
+    """Pin the cosine-distance result column to `Float`. With the bare
+    `op("<=>")` the result type defaults to the LHS column type (HALFVEC),
+    which routes the scalar distance through `HalfVector._from_db` and
+    crashes with `'float' object is not subscriptable`. The
+    `cosine_distance` comparator wraps the operator with
+    `return_type=Float`, sidestepping the deserializer."""
+    expr = Chunk.embedding_half.cosine_distance([0.0] * 3072)
+    assert isinstance(expr.type, Float)
+    # Sanity check: the bare operator returns the LHS type, which is what
+    # made the bug possible. If a future SQLAlchemy or pgvector release
+    # changes this default, the assertion above can be tightened or
+    # relaxed accordingly.
+    bare = Chunk.embedding_half.op("<=>")([0.0] * 3072)
+    assert not isinstance(bare.type, Float)
 
 
 class _SessionlessFactory:
