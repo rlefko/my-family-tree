@@ -97,22 +97,18 @@ describe("uploadDocumentRequest", () => {
     expect(xhr.sentBody?.get("tree_id")).toBe("tree-7");
     xhr.status = 201;
     xhr.responseText = JSON.stringify({
-      id: "doc-1",
-      kind: "pdf_text",
-      mime_type: "application/pdf",
-      byte_size: 10,
+      document_id: "doc-1",
       sha256: "abc",
-      original_filename: "scan.pdf",
+      kind: "pdf_text",
       status: "pending",
-      attempts: 0,
-      imported_at: new Date().toISOString(),
-      text_count: 0,
-      chunk_count: 0,
-      vision_calls: [],
+      mime_type: "application/pdf",
+      original_filename: "scan.pdf",
     });
     xhr.fire("load", new ProgressEvent("load"));
     const result = await promise;
-    expect(result.id).toBe("doc-1");
+    expect(result.document_id).toBe("doc-1");
+    expect(result.mime_type).toBe("application/pdf");
+    expect(result.original_filename).toBe("scan.pdf");
   });
 
   it("rejects with parsed error code on failure", async () => {

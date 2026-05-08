@@ -2,6 +2,7 @@ import { Loader2, Paperclip, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Tooltip } from "@/components/ui/tooltip";
+import type { DocumentKind } from "@/features/documents/constants";
 import { cn } from "@/lib/utils";
 
 export type ChatAttachment = {
@@ -10,6 +11,8 @@ export type ChatAttachment = {
   status: "uploading" | "ready" | "failed";
   progress: number;
   documentId?: string;
+  mimeType?: string;
+  kind?: DocumentKind;
   error?: string;
 };
 

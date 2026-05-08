@@ -124,6 +124,8 @@ def test_upload_dedupe_returns_existing_without_enqueue() -> None:
     body = resp.json()
     assert body["document_id"] == str(existing.id)
     assert body["status"] == "ready"
+    assert body["mime_type"] == "text/plain"
+    assert body["original_filename"] == "foo.txt"
     pool.enqueue_job.assert_not_called()
     storage.put.assert_not_called()
 
@@ -140,6 +142,9 @@ def test_upload_enqueues_ingest_job_once() -> None:
         data={"tree_id": str(uuid4())},
     )
     assert resp.status_code == 201
+    body = resp.json()
+    assert body["mime_type"] == "text/plain"
+    assert body["original_filename"] == "foo.txt"
     pool.enqueue_job.assert_called_once()
     args, _ = pool.enqueue_job.call_args
     assert args[0] == "ingest_document"

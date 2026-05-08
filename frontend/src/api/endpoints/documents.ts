@@ -23,6 +23,15 @@ export type DocumentRow = {
 
 export type DocumentList = { items: DocumentRow[]; total: number };
 
+export type DocumentCreated = {
+  document_id: string;
+  sha256: string;
+  kind: DocumentKind;
+  status: DocumentStatus;
+  mime_type: string;
+  original_filename: string;
+};
+
 export type DocumentDetail = {
   id: string;
   kind: DocumentKind;
@@ -164,9 +173,9 @@ export function buildUploadFormData({
   return fd;
 }
 
-export function uploadDocumentRequest(input: UploadDocumentInput): Promise<DocumentDetail> {
+export function uploadDocumentRequest(input: UploadDocumentInput): Promise<DocumentCreated> {
   const fd = buildUploadFormData(input);
-  return new Promise<DocumentDetail>((resolve, reject) => {
+  return new Promise<DocumentCreated>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${env.VITE_API_BASE_URL}/api/v1/documents`);
     xhr.setRequestHeader("X-Request-ID", crypto.randomUUID());
@@ -176,7 +185,7 @@ export function uploadDocumentRequest(input: UploadDocumentInput): Promise<Docum
     xhr.addEventListener("load", () => {
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
-          resolve(JSON.parse(xhr.responseText) as DocumentDetail);
+          resolve(JSON.parse(xhr.responseText) as DocumentCreated);
         } catch (e) {
           reject({
             status: xhr.status,
