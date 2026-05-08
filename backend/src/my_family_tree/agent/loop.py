@@ -54,9 +54,9 @@ class ChatAgent:
     system_prompt: str = CHAT_SYSTEM_PROMPT
     reasoning: ReasoningConfig = field(default_factory=lambda: ReasoningConfig(effort="medium"))
     # Per-call cap. The same budget covers reasoning, text, and tool-call
-    # argument JSON, so a small default would routinely truncate a long
-    # `note_create(body=...)` mid-stream and leave the loop with unparseable
-    # arguments.
+    # argument JSON, so smaller defaults like 4096 routinely truncated long
+    # `note_create(body=...)` calls mid-stream and left the loop with
+    # unparseable arguments.
     max_output_tokens: int = 32768
 
     async def run_turn(  # noqa: PLR0912  the loop is naturally branchy
