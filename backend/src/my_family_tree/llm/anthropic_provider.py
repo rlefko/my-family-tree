@@ -15,6 +15,7 @@ from my_family_tree.core.logging import get_logger
 from my_family_tree.llm.base import (
     CacheConfig,
     CompletionResult,
+    ImageBlock,
     LLMProvider,
     Message,
     ReasoningConfig,
@@ -196,6 +197,18 @@ def _to_anthropic_messages(messages: list[Message]) -> list[dict[str, Any]]:
         for block in msg.content:
             if isinstance(block, TextBlock):
                 content_blocks.append({"type": "text", "text": block.text})
+            elif isinstance(block, ImageBlock):
+                if role == "user":
+                    content_blocks.append(
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": block.media_type,
+                                "data": block.data_b64,
+                            },
+                        }
+                    )
             elif isinstance(block, ToolUseBlock):
                 content_blocks.append(
                     {

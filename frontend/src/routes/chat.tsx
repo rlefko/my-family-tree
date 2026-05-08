@@ -14,12 +14,16 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { useConversations } from "@/api/endpoints/conversations";
-import { uploadDocumentRequest } from "@/api/endpoints/documents";
+import { documentRawUrl, uploadDocumentRequest } from "@/api/endpoints/documents";
 import { Tooltip } from "@/components/ui/tooltip";
 import { ChatAttachments, type ChatAttachment } from "@/features/chat/ChatAttachments";
 import { InlineProposals } from "@/features/chat/InlineProposals";
 import { ToolCallCard } from "@/features/chat/ToolCallCard";
-import { useChatStream, type ChatTurn } from "@/features/chat/ChatStreamProvider";
+import {
+  useChatStream,
+  type ChatAttachmentRef,
+  type ChatTurn,
+} from "@/features/chat/ChatStreamProvider";
 import { MAX_UPLOAD_BYTES, formatBytes } from "@/features/documents/constants";
 import { DEFAULT_TREE_ID } from "@/lib/tree";
 import { cn } from "@/lib/utils";
@@ -300,10 +304,11 @@ function Bubble({ turn }: { turn: ChatTurn }) {
   const isUser = turn.role === "user";
   const toolCalls = turn.toolCalls ?? [];
   const proposalIds = turn.proposalIds ?? [];
+  const attachments = turn.attachments ?? [];
   const hasContent = !!turn.content;
   const hasThinking = !!turn.thinking;
   const hasTrace = hasThinking || toolCalls.length > 0;
-  const isQuiet = !hasContent && toolCalls.length === 0;
+  const isQuiet = !hasContent && toolCalls.length === 0 && attachments.length === 0;
   const runningTool = toolCalls.find((c) => c.status === "running");
   const turnDone = !turn.pending;
   return (
@@ -333,6 +338,7 @@ function Bubble({ turn }: { turn: ChatTurn }) {
           ) : null}
         </>
       ) : null}
+      {isUser && attachments.length > 0 ? <UserAttachments items={attachments} /> : null}
       {hasContent ? (
         isUser ? (
           <p className="whitespace-pre-wrap break-words">{turn.content}</p>
@@ -348,6 +354,48 @@ function Bubble({ turn }: { turn: ChatTurn }) {
         <BusyFooter runningToolName={runningTool?.name ?? null} isStreamingText={hasContent} />
       ) : null}
       {!isUser && proposalIds.length > 0 ? <InlineProposals ids={proposalIds} /> : null}
+    </div>
+  );
+}
+
+function UserAttachments({ items }: { items: ChatAttachmentRef[] }) {
+  return (
+    <div className="mb-2 flex flex-wrap gap-2">
+      {items.map((a) => {
+        const isImage = (a.mimeType ?? "").startsWith("image/") || a.kind === "image";
+        const rawUrl = documentRawUrl(a.documentId);
+        if (isImage) {
+          return (
+            <a
+              key={a.documentId}
+              href={rawUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="block overflow-hidden rounded-md border border-white/30 bg-black/20"
+              title={a.filename}
+            >
+              <img
+                src={rawUrl}
+                alt={a.filename}
+                className="block max-h-48 max-w-full object-contain"
+              />
+            </a>
+          );
+        }
+        return (
+          <a
+            key={a.documentId}
+            href={rawUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-md border border-white/30 bg-white/10 px-2 py-1 text-xs"
+            title={a.filename}
+          >
+            <Paperclip className="h-3 w-3" />
+            <span className="max-w-[200px] truncate">{a.filename}</span>
+          </a>
+        );
+      })}
     </div>
   );
 }

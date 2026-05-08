@@ -23,7 +23,15 @@ export type AssistantBlock =
   | { type: "text"; text: string }
   | { type: "proposals_summary"; proposal_ids: string[] };
 
-export type UserBlock = { type: "text"; text: string };
+export type UserAttachmentBlock = {
+  type: "attachment";
+  document_id: string;
+  filename: string | null;
+  mime_type: string | null;
+  kind: string | null;
+};
+
+export type UserBlock = { type: "text"; text: string } | UserAttachmentBlock;
 
 export type MessageRow = {
   id: string;

@@ -12,7 +12,7 @@ from uuid import UUID
 from fastapi import APIRouter, File, Form, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.sql import nulls_last
 
 from my_family_tree.api.deps import EnqueueDep, SessionDep, SettingsDep, StorageDep
@@ -22,7 +22,7 @@ from my_family_tree.core.errors import (
     StorageError,
 )
 from my_family_tree.core.logging import get_logger
-from my_family_tree.core.time import utcnow
+from my_family_tree.ingest.lifecycle import reset_for_reingest
 from my_family_tree.ingest.pdf import has_text_layer
 from my_family_tree.models.chunk import Chunk
 from my_family_tree.models.document import Document, DocumentText
@@ -396,17 +396,7 @@ async def reprocess_document(
     doc = await session.get(Document, document_id)
     if doc is None:
         raise NotFoundError(f"document {document_id} not found")
-    await session.execute(delete(Chunk).where(Chunk.document_id == document_id))
-    await session.execute(delete(DocumentText).where(DocumentText.document_id == document_id))
-    meta = dict(doc.meta_json or {})
-    meta["processing_steps"] = []
-    meta.pop("vision_calls", None)
-    doc.meta_json = meta
-    doc.status = ProcessingStatus.pending
-    doc.error = None
-    doc.attempts = 0
-    doc.processed_at = None
-    doc.updated_at = utcnow()
+    await reset_for_reingest(session, doc)
     await session.flush()
     job = await pool.enqueue_job("ingest_document", str(document_id))
     return DocumentReprocessed(

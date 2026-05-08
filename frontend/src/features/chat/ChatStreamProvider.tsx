@@ -27,6 +27,8 @@ import {
   fetchConversation,
   type AssistantBlock,
   type MessageRow,
+  type UserAttachmentBlock,
+  type UserBlock,
 } from "@/api/endpoints/conversations";
 import { postSSE } from "@/api/sse";
 import { DEFAULT_TREE_ID } from "@/lib/tree";
@@ -50,6 +52,7 @@ export type ChatTurn = {
   error?: boolean;
   toolCalls?: ToolCall[];
   proposalIds?: string[];
+  attachments?: ChatAttachmentRef[];
 };
 
 const STORAGE_KEY = "mft.activeConversation";
@@ -82,8 +85,25 @@ function turnsFromMessages(messages: MessageRow[]): ChatTurn[] {
   const turns: ChatTurn[] = [];
   for (const m of messages) {
     if (m.role === "user") {
-      const text = m.content.map((b) => (b.type === "text" ? b.text : "")).join("");
-      turns.push({ id: m.id, role: "user", content: text });
+      const blocks = m.content as UserBlock[];
+      const text = blocks
+        .filter((b): b is Extract<UserBlock, { type: "text" }> => b.type === "text")
+        .map((b) => b.text)
+        .join("");
+      const attachments = blocks
+        .filter((b): b is UserAttachmentBlock => b.type === "attachment")
+        .map((b) => ({
+          documentId: b.document_id,
+          filename: b.filename ?? "document",
+          mimeType: b.mime_type ?? null,
+          kind: b.kind ?? null,
+        }));
+      turns.push({
+        id: m.id,
+        role: "user",
+        content: text,
+        attachments: attachments.length > 0 ? attachments : undefined,
+      });
     } else if (m.role === "assistant") {
       const turn: ChatTurn = {
         id: m.id,
@@ -119,6 +139,8 @@ function turnsFromMessages(messages: MessageRow[]): ChatTurn[] {
 export type ChatAttachmentRef = {
   documentId: string;
   filename: string;
+  mimeType?: string | null;
+  kind?: string | null;
 };
 
 export type ChatStreamValue = {
@@ -228,17 +250,13 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
       userInteractedRef.current = true;
 
       const ready = (attachments ?? []).filter((a) => a.documentId);
-      const wireMessage =
-        ready.length > 0
-          ? `[Attached documents: ${ready.map((a) => a.filename).join(", ")} | ids: ${ready
-              .map((a) => a.documentId)
-              .join(", ")}]\n\n${trimmed}`
-          : trimmed;
+      const wireAttachments = ready.map((a) => ({ document_id: a.documentId }));
 
       const userTurn: ChatTurn = {
         id: crypto.randomUUID(),
         role: "user",
         content: trimmed,
+        attachments: ready.length > 0 ? ready : undefined,
       };
       const pendingId = crypto.randomUUID();
       const pending: ChatTurn = {
@@ -251,12 +269,8 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
         proposalIds: [],
       };
 
-      // Snapshot the prior turns once and reuse for both the optimistic update
-      // and the request body so we never read state we just wrote.
-      let historySnapshot: { role: string; content: string }[] = [];
       setTurns((prev) => {
         const history = prev.filter((t) => !t.pending && !t.error);
-        historySnapshot = history.map((t) => ({ role: t.role, content: t.content }));
         return [...history, userTurn, pending];
       });
 
@@ -269,8 +283,8 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
           "/api/v1/chat/stream",
           {
             tree_id: DEFAULT_TREE_ID,
-            message: wireMessage,
-            history: historySnapshot,
+            message: trimmed,
+            attachments: wireAttachments,
             conversation_id: conversationIdRef.current,
           },
           { signal: controller.signal },
