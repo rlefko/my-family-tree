@@ -236,9 +236,7 @@ function SubagentBody({
           </div>
         </div>
       ) : live ? (
-        <div className="text-[11px] italic text-muted-foreground">
-          Subagent working...
-        </div>
+        <div className="text-[11px] italic text-muted-foreground">Subagent working...</div>
       ) : null}
       {summary ? (
         <div className="rounded border border-border bg-card p-2 text-[11px] leading-snug">

@@ -323,10 +323,7 @@ function ChatTurns({ turns }: { turns: ChatTurn[] }) {
       {turns.map((turn, idx) => (
         <li
           key={turn.id}
-          className={cn(
-            "flex w-full",
-            turn.role === "user" ? "justify-end" : "justify-start",
-          )}
+          className={cn("flex w-full", turn.role === "user" ? "justify-end" : "justify-start")}
         >
           <Bubble turn={turn} isLatestAssistant={idx === latestAssistantIndex} />
         </li>
