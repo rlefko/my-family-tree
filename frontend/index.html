@@ -9,7 +9,8 @@
         try {
           var saved = localStorage.getItem("mft-theme");
           var systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-          var resolved = saved === "light" || saved === "dark" ? saved : systemDark ? "dark" : "light";
+          var resolved =
+            saved === "light" || saved === "dark" ? saved : systemDark ? "dark" : "light";
           document.documentElement.classList.toggle("dark", resolved === "dark");
           document.documentElement.style.colorScheme = resolved;
         } catch (e) {
