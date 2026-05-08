@@ -59,7 +59,7 @@ class ChatAgent:
     # unparseable arguments.
     max_output_tokens: int = 32768
 
-    async def run_turn(  # noqa: PLR0912  the loop is naturally branchy
+    async def run_turn(  # noqa: PLR0912, PLR0915  the loop is naturally branchy
         self,
         messages: list[Message],
     ) -> AsyncIterator[ChatTurnEvent]:

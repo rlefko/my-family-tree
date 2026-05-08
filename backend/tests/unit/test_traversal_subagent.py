@@ -23,12 +23,12 @@ from my_family_tree.agent.traversal_subagent import (
     _collect_persons,
     run_traversal_subagent,
 )
-from my_family_tree.mcp import tools as _tools_pkg  # noqa: F401  registers tools
 from my_family_tree.llm.base import (
     Message,
     StreamEvent,
     UsageDelta,
 )
+from my_family_tree.mcp import tools as _tools_pkg  # noqa: F401  registers tools
 from my_family_tree.mcp.host import ToolContext, ToolHost
 from my_family_tree.mcp.registry import Capability, get_registry
 

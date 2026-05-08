@@ -311,9 +311,7 @@ async def person_count_relations(
         )
 
 
-def _relations_stmt(
-    root_id: UUID, relation: RelationKind, tree_id: UUID
-) -> Select[tuple[Person]]:
+def _relations_stmt(root_id: UUID, relation: RelationKind, tree_id: UUID) -> Select[tuple[Person]]:
     """Build a `select(Person)` for one-hop relations to `root_id`. Filters
     out merged or hidden persons. Symmetric edges (spouse_of, sibling_of) are
     stored as two rows, so a `subject_id == root` predicate is enough; the

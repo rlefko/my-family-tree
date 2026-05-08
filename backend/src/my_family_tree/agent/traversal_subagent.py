@@ -10,7 +10,7 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Protocol
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from my_family_tree.agent.budgets import Budgets
 from my_family_tree.agent.loop import ChatAgent
@@ -229,6 +229,9 @@ def _collect_persons(output: dict[str, Any], persons: dict[UUID, PersonSummary])
     for cand in candidates:
         try:
             summary = PersonSummary.model_validate(cand)
-        except Exception:
+        except ValidationError:
+            # A non-summary dict slipped past the shape probe (e.g. a search
+            # result row from a tool we did not anticipate); ignore it rather
+            # than corrupting the parent's structured node list.
             continue
         persons.setdefault(summary.id, summary)
