@@ -206,6 +206,43 @@ def test_splitter_coerces_non_dict_input_to_empty_dict() -> None:
 
 
 @pytest.mark.unit
+def test_splitter_preserves_request_user_input_output_for_rehydration() -> None:
+    """When an assistant turn ended with `request_user_input`, the persisted
+    `tool_use` block carries the echoed question/options on `output`. The
+    splitter must round-trip both sides so the frontend can lift the question
+    back into the prompt card after a page reload, and so the next turn's
+    LLM sees the question and the user's answer in context."""
+    persisted = [
+        {
+            "type": "tool_use",
+            "id": "call_q",
+            "name": "request_user_input",
+            "input": {"reason": "Which Anna do you mean?"},
+            "output": {
+                "acknowledged": True,
+                "question": "Which Anna do you mean?",
+                "options": ["Anna A", "Anna B"],
+                "schema_hint": None,
+            },
+            "is_error": False,
+        },
+        {"type": "text", "text": "I need a clarification."},
+    ]
+    out = _assistant_messages_from_content(persisted)
+    assert len(out) == 2
+    asst, tool = out
+    use = next(b for b in asst.content if isinstance(b, ToolUseBlock))
+    assert use.name == "request_user_input"
+    assert use.input == {"reason": "Which Anna do you mean?"}
+    result = next(b for b in tool.content if isinstance(b, ToolResultBlock))
+    assert result.tool_use_id == "call_q"
+    assert isinstance(result.output, dict)
+    assert result.output["question"] == "Which Anna do you mean?"
+    assert result.output["options"] == ["Anna A", "Anna B"]
+    assert result.is_error is False
+
+
+@pytest.mark.unit
 def test_splitter_pair_is_valid_llmmessage() -> None:
     """Sanity: the splitter returns real `LLMMessage` instances with
     matching roles, so the result can be appended directly to the message

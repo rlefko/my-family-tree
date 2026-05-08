@@ -56,6 +56,33 @@ class _ProposalRefLike:
 
 
 @dataclass
+class _RequestUserInputAck:
+    """Mirrors `RequestUserInputOutput` so the loop's tool-result pipe can
+    read `acknowledged`/`question`/`options` like a real Pydantic model."""
+
+    acknowledged: bool = True
+    question: str = ""
+    options: list[str] | None = None
+    schema_hint: str | None = None
+
+    def model_dump(self, mode: str = "python") -> dict[str, Any]:
+        return {
+            "acknowledged": self.acknowledged,
+            "question": self.question,
+            "options": self.options,
+            "schema_hint": self.schema_hint,
+        }
+
+
+@dataclass
+class _SearchHit:
+    results: list[dict[str, Any]] | None = None
+
+    def model_dump(self, mode: str = "python") -> dict[str, Any]:
+        return {"results": self.results or []}
+
+
+@dataclass
 class FakeProvider:
     name: str = "fake"
     default_model: str = "fake-model"
@@ -252,6 +279,96 @@ async def test_tool_with_malformed_json_input_surfaces_real_error_without_host_c
     second_history = provider.seen_messages[1]
     assert any(m.role == "assistant" for m in second_history)
     assert any(m.role == "tool" for m in second_history)
+
+
+@pytest.mark.unit
+async def test_request_user_input_pauses_loop_and_emits_needs_input() -> None:
+    """When the agent calls `request_user_input`, the loop must yield a
+    `needs_input` event carrying the parsed question/options, then close the
+    turn. The provider is NOT re-entered, so the user has a chance to reply
+    on the next turn before the agent does anything else."""
+    args = {
+        "reason": "Which Anna do you mean?",
+        "options": ["Anna Doe (b. 1932)", "Anna Doe (b. 1958)"],
+    }
+    args_json = json.dumps(args)
+    first_turn = [
+        _tool_started("call_1", "request_user_input"),
+        _tool_input("call_1", args_json),
+        _tool_finished("call_1"),
+        _usage(),
+        _done(),
+    ]
+    provider = FakeProvider(scripts=[first_turn])
+    host = FakeHost(
+        next_outputs=[
+            _RequestUserInputAck(
+                question=args["reason"],
+                options=args["options"],
+            ),
+        ]
+    )
+    agent = ChatAgent(provider=provider, model="m", host=host, budgets=Budgets())
+
+    events = []
+    async for evt in agent.run_turn(_initial_messages()):
+        events.append((evt.type, evt.payload))
+
+    types = [e[0] for e in events]
+    assert "needs_input" in types
+    needs = next(e[1] for e in events if e[0] == "needs_input")
+    assert needs["question"] == "Which Anna do you mean?"
+    assert needs["options"] == ["Anna Doe (b. 1932)", "Anna Doe (b. 1958)"]
+
+    # `done` follows `needs_input` so the SSE caller can finalize the turn.
+    assert types[-1] == "done"
+
+    # Critically, the provider was only called once: no re-entry after the
+    # pause. A second `stream` call would mean the agent ignored the user's
+    # need to answer.
+    assert len(provider.seen_messages) == 1
+
+    # The host did receive the tool call so its echoed output is persisted.
+    assert host.calls == [("request_user_input", args)]
+
+
+@pytest.mark.unit
+async def test_request_user_input_lets_earlier_tools_complete_before_pausing() -> None:
+    """If the provider issued a benign read AND a `request_user_input` in the
+    same response, both tool calls should run and persist; the loop then
+    pauses once the stream closes. The model already committed to those
+    earlier calls, and discarding them would force a redo."""
+    search_args = {"query": "Anna"}
+    pause_args = {"reason": "Which match did you mean?"}
+    first_turn = [
+        _tool_started("call_search", "person_search"),
+        _tool_input("call_search", json.dumps(search_args)),
+        _tool_finished("call_search"),
+        _tool_started("call_ask", "request_user_input"),
+        _tool_input("call_ask", json.dumps(pause_args)),
+        _tool_finished("call_ask"),
+        _usage(),
+        _done(),
+    ]
+    provider = FakeProvider(scripts=[first_turn])
+    host = FakeHost(
+        next_outputs=[
+            _SearchHit(),
+            _RequestUserInputAck(question=pause_args["reason"]),
+        ]
+    )
+    agent = ChatAgent(provider=provider, model="m", host=host, budgets=Budgets())
+
+    events = []
+    async for evt in agent.run_turn(_initial_messages()):
+        events.append((evt.type, evt.payload))
+
+    # Both tool calls fired.
+    assert [c[0] for c in host.calls] == ["person_search", "request_user_input"]
+    # Pause happened.
+    assert "needs_input" in [e[0] for e in events]
+    # No second provider invocation.
+    assert len(provider.seen_messages) == 1
 
 
 @pytest.mark.unit
