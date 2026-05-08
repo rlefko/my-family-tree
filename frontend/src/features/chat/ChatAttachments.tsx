@@ -10,6 +10,8 @@ export type ChatAttachment = {
   status: "uploading" | "ready" | "failed";
   progress: number;
   documentId?: string;
+  mimeType?: string | null;
+  kind?: string | null;
   error?: string;
 };
 
