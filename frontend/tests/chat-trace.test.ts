@@ -107,6 +107,61 @@ describe("applyEvent trace ordering", () => {
     expect(summary).toEqual(["T(plan)", "tool(tool_a)", "T(review)", "tool(tool_b)", "T(wrap up)"]);
   });
 
+  it("splits thinking entries across a thinking_break boundary", () => {
+    const turn = feed(emptyTurn(), [
+      { type: "thinking_delta", data: { text: "**Considering options**\nLooking at Anna." } },
+      { type: "thinking_break", data: {} },
+      { type: "thinking_delta", data: { text: "**Queueing**\nDrafting the proposal." } },
+    ]);
+    expect(turn.trace).toHaveLength(2);
+    const first = turn.trace?.[0] as ThinkingEntry;
+    const second = turn.trace?.[1] as ThinkingEntry;
+    expect(first.kind).toBe("thinking");
+    expect(second.kind).toBe("thinking");
+    expect(first.text).toBe("**Considering options**\nLooking at Anna.");
+    expect(second.text).toBe("**Queueing**\nDrafting the proposal.");
+    expect(first.id).not.toBe(second.id);
+  });
+
+  it("ignores a thinking_break before any thinking entry exists", () => {
+    const turn = feed(emptyTurn(), [
+      { type: "thinking_break", data: {} },
+      { type: "thinking_delta", data: { text: "first thought" } },
+    ]);
+    expect(turn.trace).toHaveLength(1);
+    const only = turn.trace?.[0] as ThinkingEntry;
+    expect(only.text).toBe("first thought");
+  });
+
+  it("collapses repeated thinking_breaks instead of leaving empty entries", () => {
+    const turn = feed(emptyTurn(), [
+      { type: "thinking_delta", data: { text: "alpha" } },
+      { type: "thinking_break", data: {} },
+      { type: "thinking_break", data: {} },
+      { type: "thinking_break", data: {} },
+      { type: "thinking_delta", data: { text: "beta" } },
+    ]);
+    expect(turn.trace).toHaveLength(2);
+    const [first, second] = turn.trace as [ThinkingEntry, ThinkingEntry];
+    expect(first.text).toBe("alpha");
+    expect(second.text).toBe("beta");
+  });
+
+  it("keeps thinking_break ordering correct when interleaved with tool calls", () => {
+    const turn = feed(emptyTurn(), [
+      { type: "thinking_delta", data: { text: "plan" } },
+      { type: "thinking_break", data: {} },
+      { type: "thinking_delta", data: { text: "double-check" } },
+      { type: "tool_use_started", data: { id: "a", name: "person_search" } },
+      { type: "tool_result", data: { tool_use_id: "a", output: {} } },
+      { type: "thinking_delta", data: { text: "wrap up" } },
+    ]);
+    const summary = (turn.trace ?? []).map((e) =>
+      e.kind === "thinking" ? `T(${e.text})` : `tool(${e.name})`,
+    );
+    expect(summary).toEqual(["T(plan)", "T(double-check)", "tool(person_search)", "T(wrap up)"]);
+  });
+
   it("sets pending=false and proposalIds on done", () => {
     const turn = feed(emptyTurn(), [{ type: "done", data: { proposal_ids: ["pp-1", "pp-2"] } }]);
     expect(turn.pending).toBe(false);
