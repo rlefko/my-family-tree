@@ -124,7 +124,7 @@ class ChatAgent:
                 reasoning=self.reasoning,
             )
             async for event in stream:
-                async for out in self._handle_event(event, current_tool, current_text):
+                async for out in self._handle_event(event):
                     yield out
                 if event.type == "tool_use_started":
                     current_tool = {
@@ -279,10 +279,7 @@ class ChatAgent:
     async def _handle_event(
         self,
         event: StreamEvent,
-        current_tool: dict[str, Any] | None,
-        current_text: list[str],
     ) -> AsyncIterator[ChatTurnEvent]:
-        del current_tool, current_text
         if event.type == "text_delta":
             yield ChatTurnEvent(type="text_delta", payload={"text": event.text or ""})
         elif event.type == "thinking_delta":
