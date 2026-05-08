@@ -34,6 +34,7 @@ import {
   type ProposalRow,
 } from "@/api/endpoints/proposals";
 import { Tooltip } from "@/components/ui/tooltip";
+import { PROPOSAL_ROW_TONE } from "@/lib/status-styles";
 import { cn } from "@/lib/utils";
 
 const ACTION_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -204,17 +205,11 @@ function ProposalLineItem({
 }) {
   const Icon = iconFor(p);
   const isPending = p.status === "pending";
-  const statusClasses: Record<string, string> = {
-    pending: "bg-white border border-zinc-200 text-zinc-700",
-    approved: "bg-emerald-50 border border-emerald-200 text-emerald-800",
-    rejected: "bg-zinc-100 border border-zinc-200 text-zinc-500 line-through",
-    expired: "bg-zinc-100 border border-zinc-200 text-zinc-500",
-  };
   return (
     <li
       className={cn(
         "flex items-center gap-2 rounded-md px-2 py-1.5 text-xs",
-        statusClasses[p.status] ?? statusClasses.pending,
+        PROPOSAL_ROW_TONE[p.status] ?? PROPOSAL_ROW_TONE.pending,
       )}
     >
       <Icon className="h-3.5 w-3.5 shrink-0 text-indigo-700" />
