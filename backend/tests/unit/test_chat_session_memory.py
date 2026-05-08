@@ -24,6 +24,7 @@ from my_family_tree.llm.base import (
     ToolResultBlock,
     ToolUseBlock,
 )
+from my_family_tree.models.enums import ProposalAction, ProposalStatus, SubjectType
 
 # --- _assistant_messages_from_content --------------------------------------
 
@@ -229,10 +230,10 @@ def test_splitter_pair_is_valid_llmmessage() -> None:
 
 def _row(
     *,
-    action: str = "create",
-    target_type: str | None = "person",
+    action: ProposalAction = ProposalAction.create,
+    target_type: SubjectType | None = SubjectType.person,
     payload: dict[str, object] | None = None,
-    status: str = "pending",
+    status: ProposalStatus = ProposalStatus.pending,
     target_id: UUID | None = None,
     proposal_id: UUID | None = None,
 ) -> _ProposalRow:
@@ -253,7 +254,7 @@ def test_session_state_empty_returns_empty_string() -> None:
 
 @pytest.mark.unit
 def test_session_state_single_pending_person_renders_header_and_bullet() -> None:
-    row = _row(payload={"display_name": "Anna Doe"}, status="pending")
+    row = _row(payload={"display_name": "Anna Doe"})
     out = _format_session_state([row])
     lines = out.splitlines()
     assert lines[0] == _SESSION_STATE_HEADER
@@ -270,7 +271,7 @@ def test_session_state_approved_person_appends_target_id_arrow() -> None:
     target = uuid4()
     row = _row(
         payload={"display_name": "Anna Doe"},
-        status="approved",
+        status=ProposalStatus.approved,
         target_id=target,
     )
     out = _format_session_state([row])
@@ -280,9 +281,9 @@ def test_session_state_approved_person_appends_target_id_arrow() -> None:
 
 @pytest.mark.unit
 def test_session_state_preserves_input_order_across_statuses() -> None:
-    a = _row(payload={"display_name": "A"}, status="approved", target_id=uuid4())
-    b = _row(payload={"display_name": "B"}, status="pending")
-    c = _row(payload={"display_name": "C"}, status="rejected")
+    a = _row(payload={"display_name": "A"}, status=ProposalStatus.approved, target_id=uuid4())
+    b = _row(payload={"display_name": "B"})
+    c = _row(payload={"display_name": "C"}, status=ProposalStatus.rejected)
     out = _format_session_state([a, b, c])
     bullets = [line for line in out.splitlines() if line.startswith("- proposal")]
     assert len(bullets) == 3
@@ -296,7 +297,7 @@ def test_session_state_relationship_renders_type_and_endpoints() -> None:
     subj = uuid4()
     obj = uuid4()
     row = _row(
-        target_type="relationship",
+        target_type=SubjectType.relationship,
         payload={"type": "parent_of", "subject_id": str(subj), "object_id": str(obj)},
     )
     bullet = _format_session_state([row]).splitlines()[1]
@@ -306,7 +307,7 @@ def test_session_state_relationship_renders_type_and_endpoints() -> None:
 @pytest.mark.unit
 def test_session_state_event_renders_type_and_date() -> None:
     row = _row(
-        target_type="event",
+        target_type=SubjectType.event,
         payload={"type": "birth", "date_text": "April 15, 1932"},
     )
     bullet = _format_session_state([row]).splitlines()[1]
@@ -315,14 +316,14 @@ def test_session_state_event_renders_type_and_date() -> None:
 
 @pytest.mark.unit
 def test_session_state_place_renders_name() -> None:
-    row = _row(target_type="place", payload={"name": "Boston, MA"})
+    row = _row(target_type=SubjectType.place, payload={"name": "Boston, MA"})
     bullet = _format_session_state([row]).splitlines()[1]
     assert "Boston, MA" in bullet
 
 
 @pytest.mark.unit
 def test_session_state_source_create_uses_title_when_target_type_is_none() -> None:
-    row = _row(action="create", target_type=None, payload={"title": "Vital records"})
+    row = _row(target_type=None, payload={"title": "Vital records"})
     bullet = _format_session_state([row]).splitlines()[1]
     assert "Vital records" in bullet
     assert "| create - |" in bullet  # target_type=None renders as '-'
@@ -332,11 +333,11 @@ def test_session_state_source_create_uses_title_when_target_type_is_none() -> No
 def test_session_state_unknown_combination_falls_through_to_truncated_json() -> None:
     """An action/target combo we did not anticipate must not raise; it
     just renders as a short JSON dump of the payload so the agent still
-    sees something."""
+    sees something. `(delete, event)` is not in the dispatch table."""
     row = _row(
-        action="resolve_conflict",
-        target_type=None,
-        payload={"conflict_id": "abc-123"},
+        action=ProposalAction.delete,
+        target_type=SubjectType.event,
+        payload={"event_id": "abc-123"},
     )
     bullet = _format_session_state([row]).splitlines()[1]
     assert "abc-123" in bullet
@@ -345,8 +346,7 @@ def test_session_state_unknown_combination_falls_through_to_truncated_json() -> 
 @pytest.mark.unit
 def test_session_state_person_update_lists_changed_fields() -> None:
     row = _row(
-        action="update",
-        target_type="person",
+        action=ProposalAction.update,
         payload={"birth_text": "1900", "surname": "Doe"},
         target_id=uuid4(),
     )
