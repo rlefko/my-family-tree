@@ -44,8 +44,9 @@ class VectorSearchOutput(BaseModel):
 )
 async def vector_search(ctx: ToolContext, payload: VectorSearchInput) -> VectorSearchOutput:
     async with session_scope(ctx.session_factory) as session:
-        # `<=>` is the cosine distance operator from pgvector.
-        distance = Chunk.embedding_half.op("<=>")(payload.embedding).label("distance")
+        # Use `cosine_distance()` not `op("<=>")` so the result is Float-typed;
+        # otherwise the scalar distance is routed through `HalfVector._from_db` and crashes.
+        distance = Chunk.embedding_half.cosine_distance(payload.embedding).label("distance")
         stmt = (
             select(Chunk, Document.original_filename, Document.kind, distance)
             .join(Document, Document.id == Chunk.document_id)

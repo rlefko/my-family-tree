@@ -57,6 +57,8 @@ class DocumentCreated(BaseModel):
     sha256: str
     kind: DocumentKind
     status: ProcessingStatus
+    mime_type: str
+    original_filename: str
 
 
 class DocumentDetail(BaseModel):
@@ -190,7 +192,12 @@ async def upload_document(
     found = existing.scalar_one_or_none()
     if found is not None:
         return DocumentCreated(
-            document_id=found.id, sha256=sha256, kind=found.kind, status=found.status
+            document_id=found.id,
+            sha256=sha256,
+            kind=found.kind,
+            status=found.status,
+            mime_type=found.mime_type,
+            original_filename=found.original_filename,
         )
 
     detected_kind = kind or _detect_kind(file.filename or "", file.content_type or "", data)
@@ -217,7 +224,12 @@ async def upload_document(
     job = await pool.enqueue_job("ingest_document", str(doc.id))
     log.info("documents.enqueued", document_id=str(doc.id), job_id=str(job.job_id) if job else None)
     return DocumentCreated(
-        document_id=doc.id, sha256=sha256, kind=detected_kind, status=ProcessingStatus.pending
+        document_id=doc.id,
+        sha256=sha256,
+        kind=detected_kind,
+        status=ProcessingStatus.pending,
+        mime_type=doc.mime_type,
+        original_filename=doc.original_filename,
     )
 
 

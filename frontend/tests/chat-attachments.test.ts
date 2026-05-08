@@ -117,6 +117,11 @@ describe("ChatStreamProvider.send with attachments", () => {
     const userTurn = updated.turns.find((t) => t.role === "user");
     expect(userTurn?.content).toBe("hello");
     expect(userTurn?.attachments?.map((a) => a.documentId)).toEqual(["doc-1", "doc-2"]);
+    // Mime type and kind must survive into the optimistic turn so the
+    // bubble can render an image preview before the page reload re-pulls
+    // the persisted attachment block.
+    expect(userTurn?.attachments?.[1]?.mimeType).toBe("image/png");
+    expect(userTurn?.attachments?.[1]?.kind).toBe("image");
   });
 
   it("omits attachments from the body when the user sent none", async () => {
