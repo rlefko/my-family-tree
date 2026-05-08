@@ -168,40 +168,56 @@ async def person_traverse(ctx: ToolContext, payload: TraversalInput) -> Traversa
         if root is None or root.tree_id != ctx.tree_id:
             raise NotFoundError(f"person {payload.person_id} not found")
 
-        nodes: list[TraversalNode] = []
+        nodes: list[TraversalNode] = [
+            TraversalNode(person=_to_summary(root), generation=0, relation_to_root="self"),
+        ]
         seen: set[UUID] = {root.id}
-        frontier: list[tuple[Person, int, str]] = [(root, 0, "self")]
-
-        while frontier:
-            current, gen, label = frontier.pop(0)
-            nodes.append(
-                TraversalNode(
-                    person=_to_summary(current),
-                    generation=gen,
-                    relation_to_root=label,
-                )
-            )
-            if gen >= payload.max_generations:
-                continue
+        frontier_ids: list[UUID] = [root.id]
+        # BFS one generation at a time: pull every edge incident to the
+        # current frontier in one query per direction, then batch-load the
+        # newly-reached persons in a single SELECT. Per-edge `session.get()`
+        # was N+1 over the frontier, which got expensive on dense subtrees.
+        for gen in range(payload.max_generations):
+            if not frontier_ids:
+                break
             edges_stmt = select(Relationship).where(
                 Relationship.tree_id == ctx.tree_id,
                 Relationship.type == RelType.parent_of,
             )
+            next_ids: list[tuple[UUID, str]] = []
             if payload.direction in ("ancestors", "both"):
-                # Parents of `current` are subjects of parent_of edges where object=current.
-                up_stmt = edges_stmt.where(Relationship.object_id == current.id)
+                up_stmt = edges_stmt.where(Relationship.object_id.in_(frontier_ids))
+                parent_label = _label_for("parent", gen + 1)
                 for edge in (await session.execute(up_stmt)).scalars().all():
-                    parent = await session.get(Person, edge.subject_id)
-                    if parent is not None and parent.id not in seen:
-                        seen.add(parent.id)
-                        frontier.append((parent, gen + 1, _label_for("parent", gen + 1)))
+                    if edge.subject_id not in seen:
+                        seen.add(edge.subject_id)
+                        next_ids.append((edge.subject_id, parent_label))
             if payload.direction in ("descendants", "both"):
-                down_stmt = edges_stmt.where(Relationship.subject_id == current.id)
+                down_stmt = edges_stmt.where(Relationship.subject_id.in_(frontier_ids))
+                child_label = _label_for("child", gen + 1)
                 for edge in (await session.execute(down_stmt)).scalars().all():
-                    child = await session.get(Person, edge.object_id)
-                    if child is not None and child.id not in seen:
-                        seen.add(child.id)
-                        frontier.append((child, gen + 1, _label_for("child", gen + 1)))
+                    if edge.object_id not in seen:
+                        seen.add(edge.object_id)
+                        next_ids.append((edge.object_id, child_label))
+            if not next_ids:
+                frontier_ids = []
+                continue
+            person_stmt = select(Person).where(Person.id.in_([pid for pid, _ in next_ids]))
+            by_id = {p.id: p for p in (await session.execute(person_stmt)).scalars().all()}
+            advanced: list[UUID] = []
+            for pid, label in next_ids:
+                person = by_id.get(pid)
+                if person is None:
+                    continue
+                nodes.append(
+                    TraversalNode(
+                        person=_to_summary(person),
+                        generation=gen + 1,
+                        relation_to_root=label,
+                    )
+                )
+                advanced.append(pid)
+            frontier_ids = advanced
 
         return TraversalOutput(root_id=root.id, nodes=nodes)
 
