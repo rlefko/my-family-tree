@@ -35,12 +35,12 @@ export function Tooltip({
           align={align}
           sideOffset={6}
           className={cn(
-            "z-50 max-w-xs rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] leading-snug text-white shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+            "z-50 max-w-xs rounded-md border border-foreground/20 bg-foreground px-2 py-1 text-[11px] leading-snug text-background shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
             className,
           )}
         >
           {content}
-          <TooltipPrimitive.Arrow className="fill-zinc-900" />
+          <TooltipPrimitive.Arrow className="fill-foreground" />
         </TooltipPrimitive.Content>
       </TooltipPrimitive.Portal>
     </TooltipPrimitive.Root>
