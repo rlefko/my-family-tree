@@ -668,11 +668,6 @@ export function buildLayout(
   placeOrphanUnions(couples, unionPos, personPos);
   alignSpousesWithParents(units, parentUnitOfPerson, personPos, unionPos);
 
-  const unitByUnionId = new Map<string, FamilyUnit>();
-  for (const unit of units.values()) {
-    if (unit.unionId !== undefined) unitByUnionId.set(unit.unionId, unit);
-  }
-
   const childSources = buildChildSources(parents, couples);
 
   const nodes: Node[] = [];
@@ -711,7 +706,7 @@ export function buildLayout(
 
   for (const u of couples.values()) {
     if (!unionPos.has(u.id)) continue;
-    const unit = unitByUnionId.get(u.id);
+    const unit = units.get(`unit:${u.id}`);
     let left: string;
     let right: string;
     if (unit && unit.spouses.length === 2) {
