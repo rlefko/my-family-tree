@@ -110,7 +110,9 @@ export function EditableField(props: Props) {
             readonly ? "cursor-default" : "cursor-text hover:bg-muted",
           )}
         >
-          <span className={cn("flex-1", value ? "text-foreground" : "italic text-muted-foreground")}>
+          <span
+            className={cn("flex-1", value ? "text-foreground" : "italic text-muted-foreground")}
+          >
             {typeof value === "string" && value ? value : "-"}
           </span>
           {!readonly ? (

@@ -530,12 +530,7 @@ export function FamilyTreeGraph({
         nodesConnectable={false}
         elementsSelectable
       >
-        <Background
-          variant={BackgroundVariant.Dots}
-          gap={16}
-          size={1}
-          color="var(--border)"
-        />
+        <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="var(--border)" />
         <Controls position="bottom-right" showInteractive={false} />
       </ReactFlow>
     </div>

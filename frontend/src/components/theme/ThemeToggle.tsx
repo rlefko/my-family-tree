@@ -34,10 +34,7 @@ export function ThemeToggle() {
         </DropdownMenuTrigger>
       </Tooltip>
       <DropdownMenuContent align="end" sideOffset={6}>
-        <DropdownMenuRadioGroup
-          value={theme}
-          onValueChange={(value) => setTheme(value as Theme)}
-        >
+        <DropdownMenuRadioGroup value={theme} onValueChange={(value) => setTheme(value as Theme)}>
           <DropdownMenuRadioItem value="light">
             <Sun className="mr-2 h-3.5 w-3.5" />
             Light

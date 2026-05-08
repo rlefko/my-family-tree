@@ -171,9 +171,7 @@ function Row({
         <span
           className={cn(
             "inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[11px] font-medium",
-            person.relationship_count > 0
-              ? "bg-primary/10 text-primary"
-              : "text-muted-foreground",
+            person.relationship_count > 0 ? "bg-primary/10 text-primary" : "text-muted-foreground",
           )}
         >
           {person.relationship_count}

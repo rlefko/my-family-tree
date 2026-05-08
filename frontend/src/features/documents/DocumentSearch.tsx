@@ -99,7 +99,9 @@ function ResultCard({
           </Badge>
         ) : null}
         {hit.page ? <Badge variant="secondary">p.{hit.page}</Badge> : null}
-        <span className="ml-auto text-[10px] text-muted-foreground">{(hit.score * 100).toFixed(0)}%</span>
+        <span className="ml-auto text-[10px] text-muted-foreground">
+          {(hit.score * 100).toFixed(0)}%
+        </span>
       </div>
       <p className="line-clamp-3 text-xs text-foreground">
         <HighlightedSnippet text={hit.content} tokens={tokens} />
@@ -120,7 +122,10 @@ function HighlightedSnippet({ text, tokens }: { text: string; tokens: string[] }
       {parts.map((part, i) => {
         const key = `${i}:${part.length}`;
         return re.test(part) ? (
-          <mark key={key} className="rounded bg-amber-100 px-0.5 text-amber-900 dark:bg-amber-900/50 dark:text-amber-100">
+          <mark
+            key={key}
+            className="rounded bg-amber-100 px-0.5 text-amber-900 dark:bg-amber-900/50 dark:text-amber-100"
+          >
             {part}
           </mark>
         ) : (
