@@ -101,19 +101,11 @@ describe("applyEvent trace ordering", () => {
     const summary = (turn.trace ?? []).map((e) =>
       e.kind === "thinking" ? `T(${e.text})` : `tool(${e.name})`,
     );
-    expect(summary).toEqual([
-      "T(plan)",
-      "tool(tool_a)",
-      "T(review)",
-      "tool(tool_b)",
-      "T(wrap up)",
-    ]);
+    expect(summary).toEqual(["T(plan)", "tool(tool_a)", "T(review)", "tool(tool_b)", "T(wrap up)"]);
   });
 
   it("sets pending=false and proposalIds on done", () => {
-    const turn = feed(emptyTurn(), [
-      { type: "done", data: { proposal_ids: ["pp-1", "pp-2"] } },
-    ]);
+    const turn = feed(emptyTurn(), [{ type: "done", data: { proposal_ids: ["pp-1", "pp-2"] } }]);
     expect(turn.pending).toBe(false);
     expect(turn.proposalIds).toEqual(["pp-1", "pp-2"]);
   });
