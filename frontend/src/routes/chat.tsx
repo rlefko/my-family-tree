@@ -19,11 +19,13 @@ import { ChatAttachments, type ChatAttachment } from "@/features/chat/ChatAttach
 import { InlineProposals } from "@/features/chat/InlineProposals";
 import { ToolCallCard } from "@/features/chat/ToolCallCard";
 import {
+  traceSummary,
   useChatStream,
   type ChatAttachmentRef,
   type ChatTurn,
   type ThinkingEntry,
   type ToolEntry,
+  type TraceEntry,
 } from "@/features/chat/ChatStreamProvider";
 import { MAX_UPLOAD_BYTES, formatBytes } from "@/features/documents/constants";
 import { DEFAULT_TREE_ID } from "@/lib/tree";
@@ -343,15 +345,19 @@ function Bubble({ turn }: { turn: ChatTurn }) {
       )}
     >
       {!isUser && hasTrace ? (
-        <div className="mb-2 flex flex-col gap-1">
-          {trace.map((entry) =>
-            entry.kind === "thinking" ? (
-              <ThinkingBlock key={entry.id} entry={entry} live={live} />
-            ) : (
-              <ToolCallCard key={entry.id} call={entry} />
-            ),
-          )}
-        </div>
+        live ? (
+          <div className="mb-2 flex flex-col gap-1">
+            {trace.map((entry) =>
+              entry.kind === "thinking" ? (
+                <ThinkingBlock key={entry.id} entry={entry} live={true} />
+              ) : (
+                <ToolCallCard key={entry.id} call={entry} />
+              ),
+            )}
+          </div>
+        ) : (
+          <CollapsedTrace trace={trace} />
+        )
       ) : null}
       {isUser && attachments.length > 0 ? <UserAttachments items={attachments} /> : null}
       {hasContent ? (
@@ -471,6 +477,32 @@ function ThinkingBlock({ entry, live }: { entry: ThinkingEntry; live: boolean })
           <Markdown content={entry.text} />
         ) : (
           <span className="italic opacity-70">Thinking...</span>
+        )}
+      </div>
+    </details>
+  );
+}
+
+function CollapsedTrace({ trace }: { trace: TraceEntry[] }) {
+  // Once the turn finishes, fold the whole trace into one summary row that
+  // defaults to closed. Switching the parent JSX shape (flat list -> this
+  // wrapper) remounts every inner ThinkingBlock and ToolCallCard, so each
+  // also resets to its closed default. The user can still expand any
+  // individual entry after opening the wrapper.
+  return (
+    <details className="group mb-2 rounded-md border border-border bg-muted/60 text-xs">
+      <summary className="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-muted-foreground marker:hidden">
+        <Brain className="h-3 w-3 text-amber-500" />
+        <span className="font-medium">{traceSummary(trace)}</span>
+        <ChevronDown className="ml-auto h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="flex flex-col gap-1 border-t border-border p-2">
+        {trace.map((entry) =>
+          entry.kind === "thinking" ? (
+            <ThinkingBlock key={entry.id} entry={entry} live={false} />
+          ) : (
+            <ToolCallCard key={entry.id} call={entry} />
+          ),
         )}
       </div>
     </details>
