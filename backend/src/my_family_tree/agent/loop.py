@@ -264,14 +264,12 @@ class ChatAgent:
         try:
             result = await self.host.call(current_tool["name"], parsed)
         except Exception as e:
-            log.warning("agent.tool_error", tool=current_tool["name"], error=str(e))
             return block, ToolResultBlock(
                 type="tool_result",
                 tool_use_id=current_tool["id"],
                 output={"error": str(e)},
                 is_error=True,
             )
-        log.info("agent.tool_finished", tool=current_tool["name"], ok=True)
         return block, ToolResultBlock(
             type="tool_result",
             tool_use_id=current_tool["id"],
