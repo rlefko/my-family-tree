@@ -18,8 +18,8 @@ bootstrap: ## Tool checks, uv sync, yarn install, pre-commit install
 	cd frontend && yarn install --frozen-lockfile
 	@command -v pre-commit >/dev/null && pre-commit install || echo "pre-commit not installed; skipping hook install"
 
-up: ## Start the full stack via docker-compose (compose gates api on the migrate one-shot)
-	docker compose up -d
+up: ## Start the full stack via docker-compose (rebuilds when pyproject/Dockerfile/etc changed)
+	docker compose up -d --build
 
 down: ## Stop the stack
 	docker compose down
@@ -33,20 +33,23 @@ restart: ## Restart all running services in place
 # ----------------------------------------------------------------------------
 # Dependency / image management
 #
-# Three knobs, in order of escalation:
+# `make up` rebuilds images on every invocation (Docker's layer cache makes
+# the no-op case fast), so day-to-day dep changes are picked up by just
+# running `make up`. The targets below cover the cases where that is not
+# enough.
 #
-#   make deps           After pyproject.toml or package.json changes. Updates
-#                       the running containers' venv / node_modules in place.
-#                       Fast: <30s typical.
+#   make build          Force-rebuild the images even when nothing in the
+#                       build context changed. Useful after editing the
+#                       Dockerfile.
 #
-#   make build          After Dockerfile changes (system deps, base image,
-#                       multi-stage layout). Rebuilds the images but keeps
-#                       data volumes (db, redis, minio).
+#   make deps-backend   Drop the venv volume and rebuild so a new lockfile
+#                       takes effect. The bind-mounted backend_venv volume
+#                       initialises from the freshly-built image.
 #
-#   make deps-fresh     If `make deps` got into a weird state (e.g. native
-#                       extensions, mismatched lockfile). Drops the venv and
-#                       node_modules volumes and reinstalls from scratch.
-#                       db/redis/minio data is preserved.
+#   make deps-frontend  Same idea for node_modules.
+#
+#   make deps-fresh     Drop both venv and node_modules volumes and rebuild
+#                       end-to-end. db/redis/minio data is preserved.
 # ----------------------------------------------------------------------------
 
 build: build-backend build-frontend ## Rebuild all docker images
@@ -59,13 +62,17 @@ build-frontend: ## Rebuild the frontend production image
 
 deps: deps-backend deps-frontend ## Sync deps inside running containers
 
-deps-backend: ## uv sync inside the api container; worker + mcp pick up the shared venv
-	docker compose exec api uv sync --frozen --all-groups
-	docker compose restart worker mcp
+deps-backend: ## Rebuild the backend image and re-init the venv volume from it
+	docker compose stop api worker mcp
+	-docker volume rm $(COMPOSE_PROJECT)_backend_venv
+	docker compose build api
+	docker compose up -d api worker mcp
 
-deps-frontend: ## yarn install inside the frontend container
-	docker compose exec frontend yarn install --frozen-lockfile
-	docker compose restart frontend
+deps-frontend: ## Rebuild the frontend image and re-init node_modules from it
+	docker compose stop frontend
+	-docker volume rm $(COMPOSE_PROJECT)_frontend_node_modules
+	docker compose build frontend
+	docker compose up -d frontend
 
 deps-fresh: ## Drop the venv and node_modules volumes and reinstall (preserves db/redis/minio)
 	docker compose stop api worker mcp frontend
