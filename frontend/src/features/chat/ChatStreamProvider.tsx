@@ -163,22 +163,7 @@ function turnsFromMessages(messages: MessageRow[]): ChatTurn[] {
       turns.push(turn);
     }
   }
-  // Only the most recent assistant turn keeps `needsInput` active; older turns
-  // had their question already answered, so clear them so the UI stops
-  // rendering stale prompt cards on every replay.
-  let lastAssistantWithNeed: number | null = null;
-  for (let i = turns.length - 1; i >= 0; i--) {
-    if (turns[i].role === "assistant" && turns[i].needsInput) {
-      lastAssistantWithNeed = i;
-      break;
-    }
-  }
-  return turns.map((t, i) => {
-    if (t.needsInput && i !== lastAssistantWithNeed) {
-      return { ...t, needsInput: undefined };
-    }
-    return t;
-  });
+  return turns;
 }
 
 function applySubagentEvent(parent: ToolEntry, inner: Record<string, unknown>): ToolEntry {
@@ -245,9 +230,7 @@ function applySubagentEvent(parent: ToolEntry, inner: Record<string, unknown>): 
   return parent;
 }
 
-function liftSubagentTrace(
-  output: unknown,
-): { trace: TraceEntry[]; summary: string } | null {
+function liftSubagentTrace(output: unknown): { trace: TraceEntry[]; summary: string } | null {
   // The traversal subagent persists its proof of work as
   // `output.trace: [{type: "text" | "thinking" | "tool_use", ...}, ...]`.
   // Convert into the same `TraceEntry` shape the live stream uses so the
