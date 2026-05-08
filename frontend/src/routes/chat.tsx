@@ -157,17 +157,17 @@ function ChatPage() {
       />
 
       <div className="relative flex flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-zinc-200 bg-white px-6 py-4">
+        <header className="flex items-center justify-between border-b border-border bg-card px-6 py-4">
           <div>
-            <h1 className="text-xl font-semibold">Chat</h1>
-            <p className="text-xs text-zinc-500">
+            <h1 className="text-xl font-semibold text-foreground">Chat</h1>
+            <p className="text-xs text-muted-foreground">
               Ask about your tree. The assistant queues changes as proposals you can approve right
               here in chat.
             </p>
           </div>
         </header>
 
-        <div ref={scrollRef} className="flex-1 overflow-y-auto bg-zinc-50/50 px-4 py-6 sm:px-6">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto bg-muted/40 px-4 py-6 sm:px-6">
           {turns.length === 0 ? (
             <EmptyState />
           ) : (
@@ -188,7 +188,7 @@ function ChatPage() {
         </div>
 
         <form
-          className="border-t border-zinc-200 bg-white px-4 py-3 sm:px-6"
+          className="border-t border-border bg-card px-4 py-3 sm:px-6"
           onSubmit={(e) => {
             e.preventDefault();
             submit();
@@ -211,13 +211,13 @@ function ChatPage() {
               type="button"
               onClick={() => fileInputRef.current?.click()}
               aria-label="Attach files"
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-zinc-300 bg-white text-zinc-600 hover:bg-zinc-50"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-input bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
             >
               <Paperclip className="h-3.5 w-3.5" />
             </button>
             <textarea
               ref={inputRef}
-              className="flex-1 resize-none rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              className="flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
               placeholder="Ask a question. Shift+Enter for a new line."
               rows={1}
               onChange={(e) => {
@@ -232,7 +232,7 @@ function ChatPage() {
               <button
                 type="button"
                 onClick={stop}
-                className="inline-flex items-center justify-center gap-1.5 rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm hover:bg-zinc-50"
+                className="inline-flex items-center justify-center gap-1.5 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-muted"
               >
                 <Square className="h-3.5 w-3.5" />
                 Stop
@@ -241,7 +241,7 @@ function ChatPage() {
               <button
                 type="submit"
                 disabled={uploading}
-                className="inline-flex items-center justify-center gap-1.5 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Send className="h-3.5 w-3.5" />
                 Send
@@ -268,25 +268,25 @@ function ConversationSidebar({
   onNewChat: () => void;
 }) {
   return (
-    <aside className="flex w-60 shrink-0 flex-col border-r border-zinc-200 bg-white">
-      <div className="border-b border-zinc-200 px-3 py-3">
+    <aside className="flex w-60 shrink-0 flex-col border-r border-border bg-card">
+      <div className="border-b border-border px-3 py-3">
         <button
           type="button"
           onClick={onNewChat}
-          className="flex w-full items-center justify-center gap-1.5 rounded-md border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-medium text-indigo-700 hover:bg-indigo-100"
+          className="flex w-full items-center justify-center gap-1.5 rounded-md border border-primary/30 bg-primary/10 px-3 py-2 text-xs font-medium text-primary hover:bg-primary/15"
         >
           <MessageSquarePlus className="h-3.5 w-3.5" />
           New chat
         </button>
       </div>
-      <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+      <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
         Recent
       </div>
       <div className="flex-1 overflow-y-auto px-1 pb-3">
         {loading ? (
-          <div className="px-3 py-2 text-xs text-zinc-400">Loading...</div>
+          <div className="px-3 py-2 text-xs text-muted-foreground">Loading...</div>
         ) : conversations.length === 0 ? (
-          <div className="px-3 py-2 text-xs text-zinc-400">No conversations yet.</div>
+          <div className="px-3 py-2 text-xs text-muted-foreground">No conversations yet.</div>
         ) : (
           <ul className="space-y-0.5">
             {conversations.map((c) => (
@@ -295,14 +295,16 @@ function ConversationSidebar({
                   type="button"
                   onClick={() => onSelect(c.id)}
                   className={cn(
-                    "block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-zinc-100",
-                    c.id === activeId ? "bg-indigo-50 text-indigo-900" : "text-zinc-700",
+                    "block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-muted",
+                    c.id === activeId
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:text-foreground",
                   )}
                   title={c.title ?? "(untitled)"}
                 >
                   <div className="truncate font-medium">{c.title ?? "(untitled)"}</div>
                   {c.last_message_at ? (
-                    <div className="truncate text-[10px] text-zinc-400">
+                    <div className="truncate text-[10px] text-muted-foreground/70">
                       {new Date(c.last_message_at).toLocaleString()}
                     </div>
                   ) : null}
@@ -332,10 +334,10 @@ function Bubble({ turn }: { turn: ChatTurn }) {
       className={cn(
         "max-w-[85%] rounded-2xl px-4 py-2.5 text-sm shadow-sm",
         isUser
-          ? "rounded-br-sm bg-indigo-600 text-white"
+          ? "rounded-br-sm bg-primary text-primary-foreground"
           : turn.error
-            ? "rounded-bl-sm border border-red-200 bg-red-50 text-red-900"
-            : "rounded-bl-sm border border-zinc-200 bg-white text-zinc-900",
+            ? "rounded-bl-sm border border-red-200 bg-red-50 text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100"
+            : "rounded-bl-sm border border-border bg-card text-card-foreground",
       )}
     >
       {!isUser && hasTrace && turnDone ? (
@@ -364,7 +366,7 @@ function Bubble({ turn }: { turn: ChatTurn }) {
       ) : turn.pending && isQuiet ? (
         <PendingHero hasThinking={hasThinking} />
       ) : !isUser && isQuiet && !turn.pending ? (
-        <span className="text-xs italic text-zinc-400">(no response, try rephrasing)</span>
+        <span className="text-xs italic text-muted-foreground">(no response, try rephrasing)</span>
       ) : null}
       {!isUser && turn.pending && !isQuiet ? (
         <BusyFooter runningToolName={runningTool?.name ?? null} isStreamingText={hasContent} />
@@ -387,7 +389,7 @@ function UserAttachments({ items }: { items: ChatAttachmentRef[] }) {
               href={rawUrl}
               target="_blank"
               rel="noreferrer"
-              className="block overflow-hidden rounded-md border border-white/30 bg-black/20"
+              className="block overflow-hidden rounded-md border border-primary-foreground/30 bg-primary-foreground/10"
               title={a.filename}
             >
               <img
@@ -404,7 +406,7 @@ function UserAttachments({ items }: { items: ChatAttachmentRef[] }) {
             href={rawUrl}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-md border border-white/30 bg-white/10 px-2 py-1 text-xs"
+            className="inline-flex items-center gap-1.5 rounded-md border border-primary-foreground/30 bg-primary-foreground/10 px-2 py-1 text-xs"
             title={a.filename}
           >
             <Paperclip className="h-3 w-3" />
@@ -429,13 +431,13 @@ function CollapsedTrace({
       ? `Reasoned and used ${calls.length} tool${calls.length === 1 ? "" : "s"}`
       : "Reasoning summary";
   return (
-    <details className="group mb-2 rounded-md border border-zinc-200 bg-zinc-50 text-xs">
-      <summary className="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-zinc-700 marker:hidden">
+    <details className="group mb-2 rounded-md border border-border bg-muted/60 text-xs">
+      <summary className="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-muted-foreground marker:hidden">
         <Brain className="h-3 w-3 text-amber-500" />
         <span className="font-medium">{summary}</span>
-        <ChevronDown className="ml-auto h-3.5 w-3.5 text-zinc-400 transition-transform group-open:rotate-180" />
+        <ChevronDown className="ml-auto h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-180" />
       </summary>
-      <div className="space-y-1 border-t border-zinc-200 p-2">
+      <div className="space-y-1 border-t border-border p-2">
         {thinking ? <ThinkingPill text={thinking} live={false} /> : null}
         {calls.map((call) => (
           <ToolCallCard key={call.id} call={call} />
@@ -458,7 +460,7 @@ function BusyFooter({
       ? "Writing reply..."
       : "Working...";
   return (
-    <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700">
+    <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
       <Loader2 className="h-3 w-3 animate-spin" />
       <span>{label}</span>
     </div>
@@ -476,11 +478,11 @@ function ThinkingPill({ text, live }: { text: string; live: boolean }) {
     >
       <div
         className={cn(
-          "mb-2 inline-flex max-w-full items-start gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-900 cursor-help",
+          "mb-2 inline-flex max-w-full items-start gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-900 cursor-help dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200",
           live ? "animate-pulse" : "",
         )}
       >
-        <Brain className="mt-[1px] h-3 w-3 shrink-0 text-amber-600" />
+        <Brain className="mt-[1px] h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400" />
         <span className="line-clamp-3 break-words">{tail || "Thinking..."}</span>
       </div>
     </Tooltip>
@@ -489,8 +491,8 @@ function ThinkingPill({ text, live }: { text: string; live: boolean }) {
 
 function PendingHero({ hasThinking }: { hasThinking: boolean }) {
   return (
-    <span className="inline-flex items-center gap-2 text-zinc-500">
-      <Loader2 className="h-3 w-3 animate-spin text-indigo-500" />
+    <span className="inline-flex items-center gap-2 text-muted-foreground">
+      <Loader2 className="h-3 w-3 animate-spin text-primary" />
       <span className="text-xs">{hasThinking ? "Working on it..." : "Thinking..."}</span>
     </span>
   );
@@ -507,7 +509,7 @@ function Markdown({ content }: { content: string }) {
               {...props}
               target="_blank"
               rel="noreferrer"
-              className="text-indigo-600 underline-offset-2 hover:underline"
+              className="text-primary underline-offset-2 hover:underline"
             />
           ),
         }}
@@ -521,11 +523,11 @@ function Markdown({ content }: { content: string }) {
 function EmptyState() {
   return (
     <div className="mx-auto flex max-w-md flex-col items-center justify-center py-20 text-center">
-      <div className="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
+      <div className="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
         <Sparkles className="h-6 w-6" />
       </div>
-      <h2 className="text-lg font-semibold text-zinc-900">Start a conversation</h2>
-      <p className="mt-1 text-sm text-zinc-500">
+      <h2 className="text-lg font-semibold text-foreground">Start a conversation</h2>
+      <p className="mt-1 text-sm text-muted-foreground">
         Ask the assistant about your tree, give it new records to file, or have it search for what's
         already there. New records get queued as proposals you can approve right in this chat.
       </p>

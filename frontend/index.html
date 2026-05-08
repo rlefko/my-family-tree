@@ -2,6 +2,22 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      // Resolve and apply the saved theme synchronously so the first paint
+      // matches the user's preference. Mirrors ThemeProvider.applyResolvedTheme.
+      (function () {
+        try {
+          var saved = localStorage.getItem("mft-theme");
+          var systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          var resolved =
+            saved === "light" || saved === "dark" ? saved : systemDark ? "dark" : "light";
+          document.documentElement.classList.toggle("dark", resolved === "dark");
+          document.documentElement.style.colorScheme = resolved;
+        } catch (e) {
+          /* localStorage blocked; fall through to default light styling */
+        }
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>My Family Tree</title>

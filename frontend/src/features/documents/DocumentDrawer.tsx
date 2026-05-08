@@ -61,7 +61,7 @@ export function DocumentDrawer({ documentId, initialPage, onClose }: Props) {
             onDelete={() => setConfirmDelete(true)}
           />
         ) : (
-          <div className="flex flex-1 items-center justify-center text-sm text-zinc-500">
+          <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
             {detail.isLoading ? "Loading..." : "No document selected"}
           </div>
         )}
@@ -134,11 +134,11 @@ function DrawerBody({
           </TabsContent>
         </Tabs>
       </div>
-      <footer className="flex items-center justify-between gap-2 border-t border-zinc-200 px-6 py-3">
+      <footer className="flex items-center justify-between gap-2 border-t border-border px-6 py-3">
         <a
           href={documentDownloadUrl(doc.id)}
           download={doc.original_filename}
-          className="inline-flex items-center gap-1.5 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+          className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted"
         >
           <Download className="h-3.5 w-3.5" />
           Download
@@ -149,7 +149,7 @@ function DrawerBody({
               type="button"
               onClick={onReprocess}
               disabled={reprocessing}
-              className="inline-flex items-center gap-1.5 rounded-md border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-indigo-100 disabled:opacity-60"
+              className="inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/15 disabled:opacity-60"
             >
               <RefreshCw className="h-3.5 w-3.5" />
               {reprocessing ? "Queueing..." : "Reprocess"}
@@ -158,7 +158,7 @@ function DrawerBody({
           <button
             type="button"
             onClick={onDelete}
-            className="inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-100"
+            className="inline-flex items-center gap-1.5 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-sm font-medium text-destructive hover:bg-destructive/20"
           >
             <Trash2 className="h-3.5 w-3.5" />
             Delete
@@ -197,7 +197,7 @@ function PreviewPane({ doc, initialPage }: { doc: DocumentDetail; initialPage?: 
     return <RawTextPreview docId={doc.id} />;
   }
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-zinc-500">
+    <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
       <p>Preview unavailable for this file type.</p>
     </div>
   );
@@ -212,10 +212,10 @@ function RawTextPreview({ docId }: { docId: string }) {
       return await res.text();
     },
   });
-  if (q.isLoading) return <p className="text-sm text-zinc-500">Loading...</p>;
-  if (q.error) return <p className="text-sm text-red-600">Failed to load preview</p>;
+  if (q.isLoading) return <p className="text-sm text-muted-foreground">Loading...</p>;
+  if (q.error) return <p className="text-sm text-destructive">Failed to load preview</p>;
   return (
-    <pre className="h-full overflow-auto whitespace-pre-wrap rounded border bg-zinc-50 p-3 font-mono text-xs">
+    <pre className="h-full overflow-auto whitespace-pre-wrap rounded border bg-muted p-3 font-mono text-xs">
       {q.data}
     </pre>
   );
@@ -226,7 +226,7 @@ function TextPane({ doc, initialPage }: { doc: DocumentDetail; initialPage?: num
   const text = useDocumentText(doc.id, { page, limit: 50 });
   if (!doc.text_count) {
     return (
-      <p className="text-sm italic text-zinc-500">
+      <p className="text-sm italic text-muted-foreground">
         {doc.status === "ready" ? "No extracted text." : "Still processing..."}
       </p>
     );
@@ -240,7 +240,7 @@ function TextPane({ doc, initialPage }: { doc: DocumentDetail; initialPage?: num
             type="button"
             disabled={page <= 1}
             onClick={() => setPage((p) => Math.max(1, p - 1))}
-            className="rounded border border-zinc-300 px-2 py-0.5 disabled:opacity-50"
+            className="rounded border border-input px-2 py-0.5 disabled:opacity-50"
           >
             Prev
           </button>
@@ -251,22 +251,22 @@ function TextPane({ doc, initialPage }: { doc: DocumentDetail; initialPage?: num
             type="button"
             disabled={page >= pages}
             onClick={() => setPage((p) => Math.min(pages, p + 1))}
-            className="rounded border border-zinc-300 px-2 py-0.5 disabled:opacity-50"
+            className="rounded border border-input px-2 py-0.5 disabled:opacity-50"
           >
             Next
           </button>
         </div>
       ) : null}
-      {text.isLoading ? <p className="text-xs text-zinc-500">Loading...</p> : null}
+      {text.isLoading ? <p className="text-xs text-muted-foreground">Loading...</p> : null}
       {text.data?.items.map((row) => (
-        <article key={row.id} className="rounded border border-zinc-200 bg-white p-3">
+        <article key={row.id} className="rounded border border-border bg-card p-3">
           <div className="mb-1 flex items-center gap-2">
             {row.page ? <Badge variant="secondary">p.{row.page}</Badge> : null}
             <Badge variant="outline" className="text-[10px]">
               {row.extraction_method}
             </Badge>
           </div>
-          <pre className="whitespace-pre-wrap text-xs text-zinc-800">{row.content}</pre>
+          <pre className="whitespace-pre-wrap text-xs text-foreground">{row.content}</pre>
         </article>
       ))}
     </div>
@@ -280,7 +280,7 @@ function ChunksPane({ doc, initialPage }: { doc: DocumentDetail; initialPage?: n
   });
   if (!doc.chunk_count) {
     return (
-      <p className="text-sm italic text-zinc-500">
+      <p className="text-sm italic text-muted-foreground">
         {doc.status === "ready" ? "No chunks." : "Chunks generated after extraction completes."}
       </p>
     );
@@ -288,19 +288,19 @@ function ChunksPane({ doc, initialPage }: { doc: DocumentDetail; initialPage?: n
   return (
     <div className="flex flex-col gap-2">
       {chunks.data?.items.map((c) => (
-        <div key={c.id} className="rounded border border-zinc-200 bg-white p-3">
-          <div className="mb-1 flex items-center gap-2 text-[11px] text-zinc-500">
+        <div key={c.id} className="rounded border border-border bg-card p-3">
+          <div className="mb-1 flex items-center gap-2 text-[11px] text-muted-foreground">
             <Badge variant="secondary">#{c.seq}</Badge>
             {c.page ? <Badge variant="outline">p.{c.page}</Badge> : null}
             <span>{c.tokens} tokens</span>
             <span>{c.kind}</span>
             {c.embedded ? (
-              <span className="text-emerald-600">embedded</span>
+              <span className="text-emerald-600 dark:text-emerald-400">embedded</span>
             ) : (
-              <span className="text-amber-600">awaiting embed</span>
+              <span className="text-amber-600 dark:text-amber-400">awaiting embed</span>
             )}
           </div>
-          <p className="text-xs text-zinc-800">
+          <p className="text-xs text-foreground">
             {c.content.length > 600 ? `${c.content.slice(0, 600)}...` : c.content}
           </p>
         </div>
@@ -332,13 +332,13 @@ function MetadataPane({ doc }: { doc: DocumentDetail }) {
         value={doc.processed_at ? new Date(doc.processed_at).toLocaleString() : "-"}
       />
       {doc.error ? (
-        <div className="col-span-3 rounded border border-red-200 bg-red-50 p-2 text-red-700">
+        <div className="col-span-3 rounded border border-red-200 bg-red-50 p-2 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
           <strong className="font-semibold">Error:</strong> {doc.error}
         </div>
       ) : null}
       {doc.vision_calls.length > 0 ? (
         <div className="col-span-3">
-          <div className="mb-1 font-semibold text-zinc-700">Vision calls</div>
+          <div className="mb-1 font-semibold text-foreground">Vision calls</div>
           <ul className="ml-4 list-disc space-y-0.5">
             {doc.vision_calls.map((v) => (
               <li key={`${v.page}-${v.model}-${v.cost_usd}`}>
@@ -355,8 +355,8 @@ function MetadataPane({ doc }: { doc: DocumentDetail }) {
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <>
-      <dt className="font-medium text-zinc-500">{label}</dt>
-      <dd className="col-span-2 break-words text-zinc-800">{value}</dd>
+      <dt className="font-medium text-muted-foreground">{label}</dt>
+      <dd className="col-span-2 break-words text-foreground">{value}</dd>
     </>
   );
 }

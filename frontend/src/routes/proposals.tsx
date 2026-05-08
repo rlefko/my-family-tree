@@ -14,9 +14,9 @@ function ProposalsPage() {
   const highlightIds = ids ? ids.split(",").filter(Boolean) : [];
   return (
     <section className="flex h-full flex-col">
-      <header className="border-b border-zinc-200 bg-white px-6 py-4">
-        <h1 className="text-xl font-semibold">Proposals</h1>
-        <p className="text-xs text-zinc-500">
+      <header className="border-b border-border bg-card px-6 py-4">
+        <h1 className="text-xl font-semibold text-foreground">Proposals</h1>
+        <p className="text-xs text-muted-foreground">
           Review and approve pending changes proposed by the chat agent. Approving materializes the
           canonical row and writes a chat-source provenance trail.
         </p>
