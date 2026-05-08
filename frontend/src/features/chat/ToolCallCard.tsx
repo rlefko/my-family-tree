@@ -54,7 +54,7 @@ function StatusIcon({ status }: { status: ToolCall["status"] }) {
 }
 
 function ToolIcon({ name }: { name: string }) {
-  const className = "h-3.5 w-3.5 text-zinc-500";
+  const className = "h-3.5 w-3.5 text-muted-foreground";
   if (name.startsWith("person_search") || name.startsWith("place_search")) {
     return <Search className={className} />;
   }
@@ -130,12 +130,12 @@ export function ToolCallCard({ call }: { call: ToolCall }) {
   const preview = previewFor(call);
   const citations = citationsFrom(call);
   return (
-    <details className="group rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-xs">
-      <summary className="flex cursor-pointer items-center gap-2 text-zinc-700 marker:hidden">
+    <details className="group rounded-md border border-border bg-muted/60 px-2.5 py-1.5 text-xs">
+      <summary className="flex cursor-pointer items-center gap-2 text-foreground marker:hidden">
         <ToolIcon name={call.name} />
         <span className="font-mono">{call.name}</span>
         {preview ? (
-          <span className="min-w-0 flex-1 truncate text-zinc-500" title={preview}>
+          <span className="min-w-0 flex-1 truncate text-muted-foreground" title={preview}>
             {preview}
           </span>
         ) : (
@@ -150,7 +150,7 @@ export function ToolCallCard({ call }: { call: ToolCall }) {
           <StatusIcon status={call.status} />
           {STATUS_LABEL[call.status]}
         </span>
-        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-zinc-400 transition-transform group-open:rotate-180" />
+        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
       </summary>
       {citations.length > 0 ? <Citations hits={citations} /> : null}
       {hasInput ? <Section label="Input" value={call.input} /> : null}
@@ -162,7 +162,7 @@ export function ToolCallCard({ call }: { call: ToolCall }) {
 function Citations({ hits }: { hits: SearchHit[] }) {
   return (
     <div className="mt-2">
-      <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+      <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
         Citations
       </div>
       <div className="flex flex-wrap gap-1">
@@ -180,11 +180,11 @@ function Citations({ hits }: { hits: SearchHit[] }) {
               <Link
                 to="/documents"
                 search={{ id, page: h.page ?? undefined }}
-                className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-700 hover:bg-indigo-100"
+                className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary hover:bg-primary/15"
               >
                 <FileText className="h-3 w-3" />
                 <span className="max-w-[160px] truncate">{label}</span>
-                {h.page ? <span className="text-indigo-500">p.{h.page}</span> : null}
+                {h.page ? <span className="text-primary/80">p.{h.page}</span> : null}
               </Link>
             </Tooltip>
           );
@@ -197,10 +197,10 @@ function Citations({ hits }: { hits: SearchHit[] }) {
 function Section({ label, value }: { label: string; value: unknown }) {
   return (
     <div className="mt-2">
-      <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+      <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
         {label}
       </div>
-      <pre className="overflow-x-auto rounded bg-white p-2 text-[11px] leading-snug text-zinc-800">
+      <pre className="overflow-x-auto rounded border border-border bg-card p-2 text-[11px] leading-snug text-foreground">
         {format(value)}
       </pre>
     </div>
