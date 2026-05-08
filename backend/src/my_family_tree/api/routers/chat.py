@@ -39,7 +39,15 @@ from my_family_tree.mcp.registry import Capability, get_registry
 from my_family_tree.models.agent_run import AgentRun
 from my_family_tree.models.conversation import Conversation
 from my_family_tree.models.document import Document
-from my_family_tree.models.enums import AgentRole, DocumentKind, MessageRole, RunStatus
+from my_family_tree.models.enums import (
+    AgentRole,
+    DocumentKind,
+    MessageRole,
+    ProposalAction,
+    ProposalStatus,
+    RunStatus,
+    SubjectType,
+)
 from my_family_tree.models.message import Message
 from my_family_tree.models.proposal import Proposal
 from my_family_tree.models.tree import Tree
@@ -451,10 +459,10 @@ class _ProposalRow:
     """Slim view of a `Proposal` used to render the [Session state] block."""
 
     proposal_id: UUID
-    action: str
-    target_type: str | None
+    action: ProposalAction
+    target_type: SubjectType | None
     payload: dict[str, Any]
-    status: str
+    status: ProposalStatus
     target_id: UUID | None
 
 
@@ -474,32 +482,44 @@ def _subject_update_fields(payload: dict[str, Any], pk: str) -> str:
     return f"update fields: {', '.join(keys)}" if keys else "update"
 
 
-_SUBJECT_DISPATCH: dict[tuple[str, str], Callable[[dict[str, Any]], str]] = {
-    ("create", "person"): lambda p: str(p.get("display_name") or "(unnamed person)"),
-    ("update", "person"): lambda p: _subject_update_fields(p, "person_id"),
-    ("merge", "person"): lambda p: (
+# target_type=None covers source/claim/conflict proposals; mirrors the
+# `_APPLY_ORDER` shape in `proposals.py`.
+_SUBJECT_DISPATCH: dict[
+    tuple[ProposalAction, SubjectType | None], Callable[[dict[str, Any]], str]
+] = {
+    (ProposalAction.create, SubjectType.person): lambda p: str(
+        p.get("display_name") or "(unnamed person)"
+    ),
+    (ProposalAction.update, SubjectType.person): lambda p: _subject_update_fields(p, "person_id"),
+    (ProposalAction.merge, SubjectType.person): lambda p: (
         f"merge loser {p.get('loser_id')} into winner {p.get('winner_id')}"
     ),
-    ("create", "relationship"): lambda p: (
+    (ProposalAction.create, SubjectType.relationship): lambda p: (
         f"{p.get('type') or 'relationship'}: {p.get('subject_id')} -> {p.get('object_id')}"
     ),
-    ("delete", "relationship"): lambda p: f"delete relationship {p.get('relationship_id')}",
-    ("create", "event"): lambda p: f"{p.get('type') or 'event'} {p.get('date_text') or ''}".strip(),
-    ("update", "event"): lambda p: _subject_update_fields(p, "event_id"),
-    ("create", "place"): lambda p: str(p.get("name") or "(unnamed place)"),
-    ("create", ""): lambda p: str(p.get("title") or p.get("kind") or "source"),
-    ("accept_claim", ""): lambda p: f"accept claim {p.get('claim_id')}",
-    ("reject_claim", ""): lambda p: f"reject claim {p.get('claim_id')}",
-    ("resolve_conflict", ""): lambda p: f"resolve conflict {p.get('conflict_id')}",
+    (ProposalAction.delete, SubjectType.relationship): lambda p: (
+        f"delete relationship {p.get('relationship_id')}"
+    ),
+    (ProposalAction.create, SubjectType.event): lambda p: (
+        f"{p.get('type') or 'event'} {p.get('date_text') or ''}".strip()
+    ),
+    (ProposalAction.update, SubjectType.event): lambda p: _subject_update_fields(p, "event_id"),
+    (ProposalAction.create, SubjectType.place): lambda p: str(p.get("name") or "(unnamed place)"),
+    (ProposalAction.create, None): lambda p: str(p.get("title") or p.get("kind") or "source"),
+    (ProposalAction.accept_claim, None): lambda p: f"accept claim {p.get('claim_id')}",
+    (ProposalAction.reject_claim, None): lambda p: f"reject claim {p.get('claim_id')}",
+    (ProposalAction.resolve_conflict, None): lambda p: f"resolve conflict {p.get('conflict_id')}",
 }
 
 
-def _proposal_subject(action: str, target_type: str | None, payload: dict[str, Any]) -> str:
+def _proposal_subject(
+    action: ProposalAction, target_type: SubjectType | None, payload: dict[str, Any]
+) -> str:
     """One-line summary of a proposal's payload, dispatched on
     `(action, target_type)`. Falls back to a truncated JSON dump for
     combinations the dispatch table does not cover so unknown shapes
     never raise."""
-    handler = _SUBJECT_DISPATCH.get((action, target_type or ""))
+    handler = _SUBJECT_DISPATCH.get((action, target_type))
     if handler is not None:
         return handler(payload)
     return json.dumps(payload, sort_keys=True, default=str)[:80]
@@ -514,15 +534,16 @@ def _format_session_state(rows: list[_ProposalRow]) -> str:
     lines: list[str] = [_SESSION_STATE_HEADER]
     for row in rows:
         subject = _proposal_subject(row.action, row.target_type, row.payload)
+        target_type_str = row.target_type.value if row.target_type is not None else "-"
         target_str = (
-            f" -> {row.target_type or 'target'} {row.target_id}"
+            f" -> {row.target_type.value if row.target_type is not None else 'target'} "
+            f"{row.target_id}"
             if row.target_id is not None
             else ""
         )
-        target_type_str = row.target_type or "-"
         lines.append(
-            f"- proposal {row.proposal_id} | {row.action} {target_type_str} | "
-            f"{subject} | status={row.status}{target_str}"
+            f"- proposal {row.proposal_id} | {row.action.value} {target_type_str} | "
+            f"{subject} | status={row.status.value}{target_str}"
         )
     return "\n".join(lines)
 
@@ -553,10 +574,10 @@ async def _proposal_rows_for_conversation(
     return [
         _ProposalRow(
             proposal_id=r[0],
-            action=r[1].value,
-            target_type=r[2].value if r[2] is not None else None,
+            action=r[1],
+            target_type=r[2],
             payload=r[3] or {},
-            status=r[4].value,
+            status=r[4],
             target_id=r[5],
         )
         for r in rows
