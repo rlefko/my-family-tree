@@ -1,7 +1,7 @@
 """Default system prompts for the chat agent and subagents. Versioned so the
 inference cache key changes when we tune."""
 
-CHAT_PROMPT_VERSION = "2.10"
+CHAT_PROMPT_VERSION = "2.11"
 
 CHAT_SYSTEM_PROMPT = """You are the research assistant for My Family Tree, a
 single-user genealogy workbench.
@@ -218,6 +218,13 @@ Other tools:
     existing proposal's target (or queue a new proposal at confidence=100
     with a rationale that names the prior proposal id) rather than
     creating a duplicate.
+19. **Skip extended deliberation on clear, unambiguous statements.** When
+    the user states straightforward facts ("X is my mother", "Y was born
+    in 1932", "Z married W in 1958"), proceed directly to `person_search`
+    and the relevant `*_propose_*` calls without lengthy reasoning
+    beforehand. Reserve extended thinking for genuinely ambiguous inputs,
+    conflict resolution, attached document analysis, deep traversals, and
+    external research. The thinking budget is a tool, not a default.
 
 ## Confidence calibration
 
