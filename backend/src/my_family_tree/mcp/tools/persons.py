@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -288,27 +288,34 @@ async def person_count_relations(
 ) -> PersonCountRelationsOutput:
     async with session_scope(ctx.session_factory) as session:
         root = await _resolve_canonical_person(session, ctx.tree_id, payload.person_id)
-
-        async def _count(stmt: Select[tuple[Person]]) -> int:
-            count_stmt = select(func.count()).select_from(stmt.subquery())
-            return int((await session.execute(count_stmt)).scalar_one())
-
         children_stmt = _relations_stmt(root.id, "children", ctx.tree_id)
-        sons_stmt = children_stmt.where(Person.sex == Sex.male)
-        daughters_stmt = children_stmt.where(Person.sex == Sex.female)
-        parents_stmt = _relations_stmt(root.id, "parents", ctx.tree_id)
-        siblings_stmt = _relations_stmt(root.id, "siblings", ctx.tree_id)
-        spouses_stmt = _relations_stmt(root.id, "spouses", ctx.tree_id)
-
+        # All six counts go in one round trip as scalar subqueries; PostgreSQL
+        # plans them independently and the agent's "how many" questions stay
+        # off the latency budget for chained tool calls.
+        counts_stmt = select(
+            _count_subquery(children_stmt).label("children"),
+            _count_subquery(children_stmt.where(Person.sex == Sex.male)).label("sons"),
+            _count_subquery(children_stmt.where(Person.sex == Sex.female)).label("daughters"),
+            _count_subquery(_relations_stmt(root.id, "parents", ctx.tree_id)).label("parents"),
+            _count_subquery(_relations_stmt(root.id, "siblings", ctx.tree_id)).label("siblings"),
+            _count_subquery(_relations_stmt(root.id, "spouses", ctx.tree_id)).label("spouses"),
+        )
+        row = (await session.execute(counts_stmt)).one()
         return PersonCountRelationsOutput(
             root_id=root.id,
-            children=await _count(children_stmt),
-            sons=await _count(sons_stmt),
-            daughters=await _count(daughters_stmt),
-            parents=await _count(parents_stmt),
-            siblings=await _count(siblings_stmt),
-            spouses=await _count(spouses_stmt),
+            children=int(row.children),
+            sons=int(row.sons),
+            daughters=int(row.daughters),
+            parents=int(row.parents),
+            siblings=int(row.siblings),
+            spouses=int(row.spouses),
         )
+
+
+def _count_subquery(stmt: Select[tuple[Person]]) -> Any:
+    """Wrap a person-`select()` as a scalar `COUNT(*)` subquery so multiple
+    counts can ride one round trip in a parent `select()`."""
+    return select(func.count()).select_from(stmt.subquery()).scalar_subquery()
 
 
 def _relations_stmt(root_id: UUID, relation: RelationKind, tree_id: UUID) -> Select[tuple[Person]]:
