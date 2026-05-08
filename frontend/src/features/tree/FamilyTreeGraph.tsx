@@ -55,7 +55,11 @@ function SexBadge({ sex, className }: { sex: PersonNode["sex"]; className?: stri
   // specific lucide-react version (Mars/Venus icons aren't in 0.468.x).
   const glyph = sex === "male" ? "♂" : sex === "female" ? "♀" : "?";
   const tone =
-    sex === "male" ? "text-sky-700" : sex === "female" ? "text-rose-700" : "text-zinc-500";
+    sex === "male"
+      ? "text-sky-700 dark:text-sky-300"
+      : sex === "female"
+        ? "text-rose-700 dark:text-rose-300"
+        : "text-muted-foreground";
   return (
     <span
       aria-label={`sex: ${sex}`}
@@ -70,16 +74,16 @@ function PersonCard({ data, selected, id }: PersonCardProps) {
   const { person, onSelect } = data;
   const cardBg =
     person.sex === "male"
-      ? "bg-sky-50 border-sky-200"
+      ? "bg-sky-50 border-sky-200 dark:bg-sky-950/40 dark:border-sky-900"
       : person.sex === "female"
-        ? "bg-rose-50 border-rose-200"
-        : "bg-zinc-50 border-zinc-200";
+        ? "bg-rose-50 border-rose-200 dark:bg-rose-950/40 dark:border-rose-900"
+        : "bg-card border-border";
   const chipBg =
     person.sex === "male"
-      ? "bg-sky-100 text-sky-700"
+      ? "bg-sky-100 text-sky-700 dark:bg-sky-950/60 dark:text-sky-200"
       : person.sex === "female"
-        ? "bg-rose-100 text-rose-700"
-        : "bg-zinc-100 text-zinc-600";
+        ? "bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-200"
+        : "bg-muted text-muted-foreground";
   const initials = personInitials(person);
   const dates =
     [
@@ -96,12 +100,12 @@ function PersonCard({ data, selected, id }: PersonCardProps) {
       className={cn(
         "relative flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left text-xs shadow-sm transition-shadow hover:shadow-md",
         cardBg,
-        selected ? "ring-2 ring-indigo-500" : "",
+        selected ? "ring-2 ring-ring" : "",
       )}
       style={{ width: NODE_WIDTH, minHeight: NODE_HEIGHT }}
     >
-      <Handle type="target" position={Position.Top} className="!h-2 !w-2 !bg-zinc-400" />
-      <Handle type="source" position={Position.Bottom} className="!h-2 !w-2 !bg-zinc-400" />
+      <Handle type="target" position={Position.Top} className="!h-2 !w-2 !bg-muted-foreground" />
+      <Handle type="source" position={Position.Bottom} className="!h-2 !w-2 !bg-muted-foreground" />
       <Handle id="left" type="source" position={Position.Left} className="!h-2 !w-2 !bg-pink-400" />
       <Handle
         id="right"
@@ -119,10 +123,10 @@ function PersonCard({ data, selected, id }: PersonCardProps) {
         {initials}
       </div>
       <div className="min-w-0 flex-1">
-        <div className="break-words font-medium leading-tight text-zinc-900">
+        <div className="break-words font-medium leading-tight text-foreground">
           {person.display_name}
         </div>
-        {dates ? <div className="mt-0.5 text-[10px] text-zinc-500">{dates}</div> : null}
+        {dates ? <div className="mt-0.5 text-[10px] text-muted-foreground">{dates}</div> : null}
       </div>
       <span
         className={cn("inline-flex shrink-0 items-center justify-center rounded-full p-1", chipBg)}
@@ -151,12 +155,12 @@ function UnionNode({ data }: NodeProps<UnionNodeData>) {
   return (
     <div className="relative">
       <div
-        className="relative flex items-center justify-center rounded-full border-2 border-pink-300 bg-white shadow-sm"
+        className="relative flex items-center justify-center rounded-full border-2 border-pink-300 bg-card shadow-sm dark:border-pink-700"
         style={{ width: UNION_WIDTH, height: UNION_HEIGHT }}
         aria-label="union"
         title={tip}
       >
-        <Heart className="h-3.5 w-3.5 text-pink-500" />
+        <Heart className="h-3.5 w-3.5 text-pink-500 dark:text-pink-400" />
         <Handle
           id="left"
           type="target"
@@ -172,7 +176,7 @@ function UnionNode({ data }: NodeProps<UnionNodeData>) {
         <Handle type="source" position={Position.Bottom} className="!h-2 !w-2 !bg-pink-400" />
       </div>
       {data.marriageDate || data.marriagePlace ? (
-        <div className="pointer-events-none absolute left-1/2 top-full mt-1 -translate-x-1/2 whitespace-nowrap rounded bg-white/95 px-1.5 py-0.5 text-[9px] font-medium text-pink-700 shadow-sm ring-1 ring-pink-200">
+        <div className="pointer-events-none absolute left-1/2 top-full mt-1 -translate-x-1/2 whitespace-nowrap rounded bg-card/95 px-1.5 py-0.5 text-[9px] font-medium text-pink-700 shadow-sm ring-1 ring-pink-200 dark:text-pink-300 dark:ring-pink-800">
           {data.marriageDate ?? ""}
           {data.marriageDate && data.marriagePlace ? " · " : ""}
           {data.marriagePlace ?? ""}
@@ -437,7 +441,7 @@ export function buildLayout(
       sourceHandle: "right",
       targetHandle: "left",
       type: "straight",
-      style: { stroke: "#ec4899", strokeWidth: 1.5 },
+      style: { stroke: "var(--tree-edge-couple)", strokeWidth: 1.5 },
     });
     edges.push({
       id: `couple-r-${i++}`,
@@ -446,7 +450,7 @@ export function buildLayout(
       sourceHandle: "left",
       targetHandle: "right",
       type: "straight",
-      style: { stroke: "#ec4899", strokeWidth: 1.5 },
+      style: { stroke: "var(--tree-edge-couple)", strokeWidth: 1.5 },
     });
   }
 
@@ -458,8 +462,13 @@ export function buildLayout(
         source: src,
         target: child,
         type: "smoothstep",
-        style: { stroke: "#6366f1", strokeWidth: 1.5 },
-        markerEnd: { type: MarkerType.ArrowClosed, color: "#6366f1", width: 14, height: 14 },
+        style: { stroke: "var(--tree-edge-parent)", strokeWidth: 1.5 },
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color: "var(--tree-edge-parent)",
+          width: 14,
+          height: 14,
+        },
       });
     }
   }
@@ -501,7 +510,7 @@ export function FamilyTreeGraph({
 
   if (graph.persons.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center p-10 text-center text-sm text-zinc-500">
+      <div className="flex h-full items-center justify-center p-10 text-center text-sm text-muted-foreground">
         No people in the tree yet. Use the Chat to add some.
       </div>
     );
@@ -521,7 +530,12 @@ export function FamilyTreeGraph({
         nodesConnectable={false}
         elementsSelectable
       >
-        <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
+        <Background
+          variant={BackgroundVariant.Dots}
+          gap={16}
+          size={1}
+          color="var(--border)"
+        />
         <Controls position="bottom-right" showInteractive={false} />
       </ReactFlow>
     </div>
