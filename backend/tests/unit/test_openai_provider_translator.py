@@ -152,6 +152,26 @@ def test_unknown_event_type_yields_nothing() -> None:
 
 
 @pytest.mark.unit
+def test_reasoning_summary_text_delta_yields_thinking_delta() -> None:
+    out = _translate_openai_event(
+        _Raw(type="response.reasoning_summary_text.delta", delta="Considering "), {}
+    )
+    assert len(out) == 1
+    assert out[0].type == "thinking_delta"
+    assert out[0].text == "Considering "
+
+
+@pytest.mark.unit
+def test_reasoning_summary_part_added_yields_thinking_break() -> None:
+    """Each new reasoning summary part is a discrete semantic chunk; the
+    translator must surface it as a `thinking_break` so the chat UI splits
+    consecutive parts into separate collapsed blocks instead of merging them."""
+    out = _translate_openai_event(_Raw(type="response.reasoning_summary_part.added"), {})
+    assert len(out) == 1
+    assert out[0].type == "thinking_break"
+
+
+@pytest.mark.unit
 def test_to_openai_input_emits_function_calls_as_top_level_items() -> None:
     """The Responses API rejects a `function_call` nested inside an assistant
     message's content array, so when we replay an assistant turn that
