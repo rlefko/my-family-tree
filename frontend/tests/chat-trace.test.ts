@@ -15,7 +15,7 @@ import {
   type ToolEntry,
   type TraceEntry,
 } from "@/features/chat/ChatStreamProvider";
-import { stripInlineMarkdown } from "@/features/chat/Trace";
+import { paragraphizeReasoning, stripInlineMarkdown } from "@/features/chat/Trace";
 
 function emptyTurn(): ChatTurn {
   return {
@@ -184,5 +184,41 @@ describe("stripInlineMarkdown", () => {
     expect(stripInlineMarkdown("**Considering** *carefully* the `person_search` results")).toBe(
       "Considering carefully the person_search results",
     );
+  });
+});
+
+describe("paragraphizeReasoning", () => {
+  it("promotes a single newline to a blank-line paragraph break", () => {
+    expect(paragraphizeReasoning("**Step one**\nLooked up Anna.")).toBe(
+      "**Step one**\n\nLooked up Anna.",
+    );
+  });
+
+  it("collapses a run of newlines to exactly one paragraph break", () => {
+    expect(paragraphizeReasoning("a\n\n\nb")).toBe("a\n\nb");
+  });
+
+  it("keeps already-paragraphed text unchanged", () => {
+    expect(paragraphizeReasoning("a\n\nb")).toBe("a\n\nb");
+  });
+
+  it("paragraph-breaks each step in a multi-step reasoning summary", () => {
+    const input = "**Step one**\nLooked up Anna.\n**Step two**\nQueued a proposal.";
+    expect(paragraphizeReasoning(input)).toBe(
+      "**Step one**\n\nLooked up Anna.\n\n**Step two**\n\nQueued a proposal.",
+    );
+  });
+
+  it("leaves fenced code blocks untouched", () => {
+    const input = "before\n```\nline1\nline2\n```\nafter";
+    expect(paragraphizeReasoning(input)).toBe("before\n\n```\nline1\nline2\n```\n\nafter");
+  });
+
+  it("passes plain single-line text through unchanged", () => {
+    expect(paragraphizeReasoning("just one line")).toBe("just one line");
+  });
+
+  it("handles an empty string", () => {
+    expect(paragraphizeReasoning("")).toBe("");
   });
 });
