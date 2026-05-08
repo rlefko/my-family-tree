@@ -17,9 +17,11 @@ from my_family_tree.mcp.registry import Capability, ToolRegistry
 
 if TYPE_CHECKING:
     from my_family_tree.core.config import Settings
+    from my_family_tree.embed.client import EmbeddingsClient
     from my_family_tree.external.genealogy import GenealogyService
     from my_family_tree.external.web_search import WebSearchService
     from my_family_tree.services.external_ingest import ExternalIngestService
+    from my_family_tree.storage.s3 import ObjectStore
 
 log = get_logger(__name__)
 
@@ -29,9 +31,11 @@ class ToolContext:
     """Per-call context handed to a tool handler. Carries the active DB session
     factory and the tree scope. Tools open their own transactional sessions.
 
-    The optional `web_search`, `genealogy`, and `external_ingest` handles let
-    tools hit external services without each handler re-resolving them from
-    settings. They're `None` when their corresponding provider is disabled;
+    The optional `storage` and `embeddings` handles let tools that touch the
+    knowledge base (notes, chunk search) reuse the long-lived clients without
+    each handler re-resolving them from settings. The optional `web_search`,
+    `genealogy`, and `external_ingest` handles do the same for external
+    providers. All are `None` when their corresponding provider is disabled;
     the registry's `enabled_when` gating means the chat agent never sees a
     tool whose service is missing, but the fields stay typed-optional so
     tests can construct contexts without wiring full services."""
@@ -41,6 +45,8 @@ class ToolContext:
     capabilities: Capability
     actor: str = "agent"
     agent_run_id: UUID | None = None
+    storage: ObjectStore | None = None
+    embeddings: EmbeddingsClient | None = None
     web_search: WebSearchService | None = None
     genealogy: GenealogyService | None = None
     external_ingest: ExternalIngestService | None = None

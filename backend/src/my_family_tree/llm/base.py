@@ -17,6 +17,13 @@ class TextBlock:
 
 
 @dataclass(slots=True)
+class ImageBlock:
+    type: Literal["image"]
+    media_type: str
+    data_b64: str
+
+
+@dataclass(slots=True)
 class ToolUseBlock:
     type: Literal["tool_use"]
     id: str
@@ -39,7 +46,7 @@ class ThinkingBlock:
     tokens: int = 0
 
 
-ContentBlock = TextBlock | ToolUseBlock | ToolResultBlock | ThinkingBlock
+ContentBlock = TextBlock | ImageBlock | ToolUseBlock | ToolResultBlock | ThinkingBlock
 
 
 @dataclass(slots=True)

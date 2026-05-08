@@ -3,9 +3,9 @@ that takes a page image and returns a textual description of the visual content
 (faces, signatures, stamps, handwritten margin notes, table headers, family-tree
 diagrams, maps). Printed body text is left to OCR (`ingest/image.py`).
 
-This intentionally does not go through the chat `LLMProvider` abstraction: the
-chat path is text + tool_use only and shouldn't grow image branches it would
-never use elsewhere."""
+The chat path now also accepts inline images via `ImageBlock` on the provider
+abstraction; this client remains the dedicated ingest-time describer because it
+batches one prompt per page with deterministic settings."""
 
 from __future__ import annotations
 
