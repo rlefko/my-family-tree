@@ -13,7 +13,7 @@ import hashlib
 from uuid import UUID
 
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from my_family_tree.core.errors import (
@@ -24,11 +24,12 @@ from my_family_tree.core.errors import (
 from my_family_tree.core.logging import get_logger
 from my_family_tree.core.time import utcnow
 from my_family_tree.db.session import session_scope
+from my_family_tree.ingest.lifecycle import reset_for_reingest
 from my_family_tree.ingest.pipeline import PipelineDeps, run_pipeline
 from my_family_tree.mcp.host import ToolContext
 from my_family_tree.mcp.registry import Capability, get_registry
 from my_family_tree.models.chunk import Chunk
-from my_family_tree.models.document import Document, DocumentText
+from my_family_tree.models.document import Document
 from my_family_tree.models.enums import DocumentKind, ProcessingStatus
 from my_family_tree.storage.s3 import storage_key
 
@@ -197,18 +198,9 @@ async def note_update(ctx: ToolContext, payload: NoteUpdateInput) -> NoteUpdated
             doc.storage_key = new_storage_key
             doc.sha256 = sha256
             doc.byte_size = stored.size
-            await session.execute(delete(Chunk).where(Chunk.document_id == document_id))
-            await session.execute(
-                delete(DocumentText).where(DocumentText.document_id == document_id)
-            )
-            meta = dict(doc.meta_json or {})
-            meta["processing_steps"] = []
-            doc.meta_json = meta
-            doc.status = ProcessingStatus.pending
-            doc.error = None
-            doc.attempts = 0
-            doc.processed_at = None
-        doc.updated_at = utcnow()
+            await reset_for_reingest(session, doc)
+        else:
+            doc.updated_at = utcnow()
         await session.flush()
 
     if new_storage_key is not None and new_storage_key != old_storage_key:
