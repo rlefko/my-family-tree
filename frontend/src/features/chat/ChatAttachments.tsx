@@ -3,6 +3,7 @@ import { Loader2, Paperclip, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { DocumentKind } from "@/features/documents/constants";
+import { STATUS_BADGE_OUTLINE } from "@/lib/status-styles";
 import { cn } from "@/lib/utils";
 
 export type ChatAttachment = {
@@ -45,8 +46,8 @@ export function ChatAttachments({
               it.status === "uploading"
                 ? "border-primary/30 bg-primary/10 text-primary"
                 : it.status === "ready"
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300"
-                  : "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300",
+                  ? STATUS_BADGE_OUTLINE.ready
+                  : STATUS_BADGE_OUTLINE.failed,
             )}
           >
             {it.status === "uploading" ? (
