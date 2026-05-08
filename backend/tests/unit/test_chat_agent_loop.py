@@ -16,6 +16,7 @@ import pytest
 
 from my_family_tree.agent.budgets import Budgets
 from my_family_tree.agent.loop import ChatAgent
+from my_family_tree.agent.subagent_events import get_subagent_event_sink
 from my_family_tree.api.routers.chat import _assistant_messages_from_content
 from my_family_tree.llm.base import (
     Message,
@@ -53,6 +54,33 @@ class _ProposalRefLike:
             "rationale": self.rationale,
             "confidence": self.confidence,
         }
+
+
+@dataclass
+class _RequestUserInputAck:
+    """Mirrors `RequestUserInputOutput` so the loop's tool-result pipe can
+    read `acknowledged`/`question`/`options` like a real Pydantic model."""
+
+    acknowledged: bool = True
+    question: str = ""
+    options: list[str] | None = None
+    schema_hint: str | None = None
+
+    def model_dump(self, mode: str = "python") -> dict[str, Any]:
+        return {
+            "acknowledged": self.acknowledged,
+            "question": self.question,
+            "options": self.options,
+            "schema_hint": self.schema_hint,
+        }
+
+
+@dataclass
+class _SearchHit:
+    results: list[dict[str, Any]] | None = None
+
+    def model_dump(self, mode: str = "python") -> dict[str, Any]:
+        return {"results": self.results or []}
 
 
 @dataclass
@@ -252,6 +280,183 @@ async def test_tool_with_malformed_json_input_surfaces_real_error_without_host_c
     second_history = provider.seen_messages[1]
     assert any(m.role == "assistant" for m in second_history)
     assert any(m.role == "tool" for m in second_history)
+
+
+@pytest.mark.unit
+async def test_request_user_input_pauses_loop_and_emits_needs_input() -> None:
+    """When the agent calls `request_user_input`, the loop must yield a
+    `needs_input` event carrying the parsed question/options, then close the
+    turn. The provider is NOT re-entered, so the user has a chance to reply
+    on the next turn before the agent does anything else."""
+    args = {
+        "reason": "Which Anna do you mean?",
+        "options": ["Anna Doe (b. 1932)", "Anna Doe (b. 1958)"],
+    }
+    args_json = json.dumps(args)
+    first_turn = [
+        _tool_started("call_1", "request_user_input"),
+        _tool_input("call_1", args_json),
+        _tool_finished("call_1"),
+        _usage(),
+        _done(),
+    ]
+    provider = FakeProvider(scripts=[first_turn])
+    host = FakeHost(
+        next_outputs=[
+            _RequestUserInputAck(
+                question=args["reason"],
+                options=args["options"],
+            ),
+        ]
+    )
+    agent = ChatAgent(provider=provider, model="m", host=host, budgets=Budgets())
+
+    events = []
+    async for evt in agent.run_turn(_initial_messages()):
+        events.append((evt.type, evt.payload))
+
+    types = [e[0] for e in events]
+    assert "needs_input" in types
+    needs = next(e[1] for e in events if e[0] == "needs_input")
+    assert needs["question"] == "Which Anna do you mean?"
+    assert needs["options"] == ["Anna Doe (b. 1932)", "Anna Doe (b. 1958)"]
+
+    # `done` follows `needs_input` so the SSE caller can finalize the turn.
+    assert types[-1] == "done"
+
+    # Critically, the provider was only called once: no re-entry after the
+    # pause. A second `stream` call would mean the agent ignored the user's
+    # need to answer.
+    assert len(provider.seen_messages) == 1
+
+    # The host did receive the tool call so its echoed output is persisted.
+    assert host.calls == [("request_user_input", args)]
+
+
+@pytest.mark.unit
+async def test_request_user_input_lets_earlier_tools_complete_before_pausing() -> None:
+    """If the provider issued a benign read AND a `request_user_input` in the
+    same response, both tool calls should run and persist; the loop then
+    pauses once the stream closes. The model already committed to those
+    earlier calls, and discarding them would force a redo."""
+    search_args = {"query": "Anna"}
+    pause_args = {"reason": "Which match did you mean?"}
+    first_turn = [
+        _tool_started("call_search", "person_search"),
+        _tool_input("call_search", json.dumps(search_args)),
+        _tool_finished("call_search"),
+        _tool_started("call_ask", "request_user_input"),
+        _tool_input("call_ask", json.dumps(pause_args)),
+        _tool_finished("call_ask"),
+        _usage(),
+        _done(),
+    ]
+    provider = FakeProvider(scripts=[first_turn])
+    host = FakeHost(
+        next_outputs=[
+            _SearchHit(),
+            _RequestUserInputAck(question=pause_args["reason"]),
+        ]
+    )
+    agent = ChatAgent(provider=provider, model="m", host=host, budgets=Budgets())
+
+    events = []
+    async for evt in agent.run_turn(_initial_messages()):
+        events.append((evt.type, evt.payload))
+
+    # Both tool calls fired.
+    assert [c[0] for c in host.calls] == ["person_search", "request_user_input"]
+    # Pause happened.
+    assert "needs_input" in [e[0] for e in events]
+    # No second provider invocation.
+    assert len(provider.seen_messages) == 1
+
+
+@pytest.mark.unit
+async def test_subagent_events_emitted_to_parent_with_parent_tool_use_id() -> None:
+    """A tool that emits via the subagent event sink must surface those events
+    on the parent loop's stream tagged with the parent tool's id, BEFORE the
+    parent's `tool_use_finished` and `tool_result` events. This is the
+    proof-of-work plumbing that lets the chat UI render the inner trace
+    inside the parent's tool card."""
+    args = {"question": "who are X's sons?"}
+    args_json = json.dumps(args)
+    first_turn = [
+        _tool_started("call_outer", "traverse_and_summarize"),
+        _tool_input("call_outer", args_json),
+        _tool_finished("call_outer"),
+        _usage(),
+        _done(),
+    ]
+    second_turn = [_text("Done."), _usage(), _done()]
+    provider = FakeProvider(scripts=[first_turn, second_turn])
+
+    class _EmittingHost(FakeHost):
+        async def call(self, name: str, payload: dict[str, Any]) -> Any:
+            self.calls.append((name, payload))
+            sink = get_subagent_event_sink()
+            assert sink is not None, "loop should install a sink before awaiting the tool"
+            sink.emit({"type": "text_delta", "text": "inner work"})
+            sink.emit({"type": "tool_use_started", "id": "inner_t1", "name": "person_relations"})
+            sink.emit(
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "inner_t1",
+                    "output": {"results": []},
+                    "is_error": False,
+                }
+            )
+            return _ProposalRefLike()
+
+    host = _EmittingHost()
+    agent = ChatAgent(provider=provider, model="m", host=host, budgets=Budgets())
+
+    events: list[tuple[str, dict[str, Any]]] = []
+    async for evt in agent.run_turn(_initial_messages()):
+        events.append((evt.type, evt.payload))
+
+    sub_events = [e for e in events if e[0] == "subagent_event"]
+    # Three inner events: text_delta, tool_use_started, tool_result.
+    assert len(sub_events) == 3
+    for _, payload in sub_events:
+        assert payload["parent_tool_use_id"] == "call_outer"
+    inner_types = [p["event"]["type"] for _, p in sub_events]
+    assert inner_types == ["text_delta", "tool_use_started", "tool_result"]
+
+    # All subagent_event entries arrive before the parent tool_result so the
+    # frontend can attach them to the right tool card.
+    sub_idx = [i for i, (t, _) in enumerate(events) if t == "subagent_event"]
+    parent_result_idx = next(i for i, (t, _) in enumerate(events) if t == "tool_result")
+    assert max(sub_idx) < parent_result_idx
+
+
+@pytest.mark.unit
+async def test_loop_handles_tool_with_no_subagent_events_cleanly() -> None:
+    """A regular tool (no sink emissions) must not deadlock on the per-call
+    event queue. The sentinel pushed in the task's `finally` is the only
+    item the drainer sees, so it breaks immediately and the tool result
+    flows through normally."""
+    args = {"display_name": "Anna Doe"}
+    args_json = json.dumps(args)
+    first_turn = [
+        _tool_started("call_1", "person_propose_create"),
+        _tool_input("call_1", args_json),
+        _tool_finished("call_1"),
+        _usage(),
+        _done(),
+    ]
+    second_turn = [_text("Queued."), _usage(), _done()]
+    provider = FakeProvider(scripts=[first_turn, second_turn])
+    host = FakeHost(next_outputs=[_ProposalRefLike(proposal_id="aaa")])
+    agent = ChatAgent(provider=provider, model="m", host=host, budgets=Budgets())
+
+    events: list[tuple[str, dict[str, Any]]] = []
+    async for evt in agent.run_turn(_initial_messages()):
+        events.append((evt.type, evt.payload))
+
+    assert [e[0] for e in events if e[0] == "subagent_event"] == []
+    assert "tool_result" in [e[0] for e in events]
+    assert "done" in [e[0] for e in events]
 
 
 @pytest.mark.unit

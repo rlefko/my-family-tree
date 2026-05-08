@@ -19,6 +19,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from my_family_tree.agent.budgets import Budgets
 from my_family_tree.agent.loop import ChatAgent, ChatTurnEvent
+from my_family_tree.agent.traversal_subagent import TraversalSubagentRunner
 from my_family_tree.api.deps import LLMDep
 from my_family_tree.core.config import get_settings
 from my_family_tree.core.errors import StorageError
@@ -207,9 +208,12 @@ def _agent_for_request(
     Optional external services (`web_search`, `genealogy`, `external_ingest`)
     are pulled from app state and threaded through both the `ToolContext`
     (so handlers can call them) and the `ToolHost` (so the catalog hides
-    tools whose providers are unconfigured)."""
+    tools whose providers are unconfigured). The `subagent_runner` lets
+    `traverse_and_summarize` spawn a read-only inner agent without exposing
+    the LLM provider to leaf tools."""
     state = request.app.state
     session_factory = state.session_factory
+    provider, model = llm.resolve()
     ctx = ToolContext(
         session_factory=session_factory,
         tree_id=req.tree_id,
@@ -221,9 +225,9 @@ def _agent_for_request(
         web_search=getattr(state, "web_search", None),
         genealogy=getattr(state, "genealogy", None),
         external_ingest=getattr(state, "external_ingest", None),
+        subagent_runner=TraversalSubagentRunner(provider=provider, model=model),
     )
     host = ToolHost(get_registry(), context=ctx, settings=get_settings())
-    provider, model = llm.resolve()
     return ChatAgent(
         provider=provider,
         model=model,

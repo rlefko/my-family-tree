@@ -4,12 +4,17 @@ provider stops or budgets are exhausted."""
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from my_family_tree.agent.budgets import Budgets
+from my_family_tree.agent.subagent_events import (
+    SubagentEventSink,
+    subagent_event_sink_scope,
+)
 from my_family_tree.agent.system_prompt import CHAT_SYSTEM_PROMPT
 from my_family_tree.core.logging import get_logger
 from my_family_tree.llm.base import (
@@ -24,6 +29,24 @@ from my_family_tree.llm.base import (
 )
 from my_family_tree.mcp.host import ToolHost
 
+# Sentinel pushed onto the per-call event queue when a tool task finishes,
+# so the drainer can break out of `await queue.get()` without polling.
+_QUEUE_DONE: object = object()
+
+
+class _QueueSink:
+    """Subagent event sink that pushes each event onto a per-call asyncio queue
+    the parent loop drains in lockstep with the tool task."""
+
+    __slots__ = ("_queue",)
+
+    def __init__(self, queue: asyncio.Queue[Any]) -> None:
+        self._queue = queue
+
+    def emit(self, event: dict[str, Any]) -> None:
+        self._queue.put_nowait(event)
+
+
 log = get_logger(__name__)
 
 
@@ -37,6 +60,7 @@ class ChatTurnEvent:
         "tool_use_started",
         "tool_use_finished",
         "tool_result",
+        "subagent_event",
         "usage",
         "done",
         "needs_input",
@@ -59,7 +83,7 @@ class ChatAgent:
     # unparseable arguments.
     max_output_tokens: int = 32768
 
-    async def run_turn(  # noqa: PLR0912  the loop is naturally branchy
+    async def run_turn(  # noqa: PLR0912, PLR0915  the loop is naturally branchy
         self,
         messages: list[Message],
     ) -> AsyncIterator[ChatTurnEvent]:
@@ -82,6 +106,7 @@ class ChatAgent:
         tool_calls_used = 0
         history = list(messages)
         proposal_ids: list[str] = []
+        pending_user_input: dict[str, Any] | None = None
 
         while True:
             assistant_blocks: list[TextBlock | ToolUseBlock] = []
@@ -99,7 +124,7 @@ class ChatAgent:
                 reasoning=self.reasoning,
             )
             async for event in stream:
-                async for out in self._handle_event(event, current_tool, current_text):
+                async for out in self._handle_event(event):
                     yield out
                 if event.type == "tool_use_started":
                     current_tool = {
@@ -110,7 +135,38 @@ class ChatAgent:
                 elif event.type == "tool_use_input_delta" and current_tool is not None:
                     current_tool["input"] += event.tool_input_delta or ""
                 elif event.type == "tool_use_finished" and current_tool is not None:
-                    block, result = await self._execute_tool(current_tool)
+                    parent_tool_id = current_tool["id"]
+                    sub_queue: asyncio.Queue[Any] = asyncio.Queue()
+                    sink: SubagentEventSink = _QueueSink(sub_queue)
+
+                    async def _exec_with_sentinel(
+                        tool: dict[str, Any],
+                        queue: asyncio.Queue[Any] = sub_queue,
+                    ) -> tuple[ToolUseBlock, ToolResultBlock]:
+                        try:
+                            return await self._execute_tool(tool)
+                        finally:
+                            queue.put_nowait(_QUEUE_DONE)
+
+                    with subagent_event_sink_scope(sink):
+                        # The task snapshots the contextvar at create_task
+                        # time, so it carries the sink even after the with
+                        # block resets the parent context.
+                        tool_task = asyncio.create_task(_exec_with_sentinel(current_tool))
+
+                    while True:
+                        item = await sub_queue.get()
+                        if item is _QUEUE_DONE:
+                            break
+                        yield ChatTurnEvent(
+                            type="subagent_event",
+                            payload={
+                                "parent_tool_use_id": parent_tool_id,
+                                "event": item,
+                            },
+                        )
+
+                    block, result = await tool_task
                     assistant_blocks.append(block)
                     if current_text:
                         assistant_blocks.insert(
@@ -125,6 +181,21 @@ class ChatAgent:
                         and result.output.get("proposal_id") is not None
                     ):
                         proposal_ids.append(str(result.output["proposal_id"]))
+                    if (
+                        block.name == "request_user_input"
+                        and not result.is_error
+                        and pending_user_input is None
+                    ):
+                        # Snapshot the question/options from the parsed input so
+                        # we can emit `needs_input` once the provider stream
+                        # closes; if the model issued additional tool calls in
+                        # the same turn we still want them to execute and
+                        # persist before we halt.
+                        pending_user_input = {
+                            "question": block.input.get("reason") or "",
+                            "options": block.input.get("options"),
+                            "schema_hint": block.input.get("schema_hint"),
+                        }
                     # Re-emit `tool_use_finished` with the parsed input now
                     # that we have it; this is what the chat UI shows in the
                     # tool-call card. The earlier bare `tool_use_finished`
@@ -170,6 +241,26 @@ class ChatAgent:
                 yield ChatTurnEvent(type="error", payload={"message": str(e)})
                 return
 
+            if pending_user_input is not None:
+                # The agent asked for clarification. Surface a `needs_input`
+                # event with the question/options so the UI can render an
+                # inline prompt, then close out the turn. The user's reply
+                # arrives as the next user message and the loop resumes from
+                # `run_turn` with full history.
+                yield ChatTurnEvent(
+                    type="needs_input",
+                    payload=dict(pending_user_input),
+                )
+                yield ChatTurnEvent(
+                    type="done",
+                    payload={
+                        "tokens_used": tokens_used,
+                        "tool_calls_used": tool_calls_used,
+                        "proposal_ids": list(proposal_ids),
+                    },
+                )
+                return
+
             # Re-enter the provider whenever we have tool results to respond
             # to. The provider's `done` event marks end-of-stream, not
             # end-of-conversation; the agent only stops when its latest
@@ -188,10 +279,7 @@ class ChatAgent:
     async def _handle_event(
         self,
         event: StreamEvent,
-        current_tool: dict[str, Any] | None,
-        current_text: list[str],
     ) -> AsyncIterator[ChatTurnEvent]:
-        del current_tool, current_text
         if event.type == "text_delta":
             yield ChatTurnEvent(type="text_delta", payload={"text": event.text or ""})
         elif event.type == "thinking_delta":

@@ -22,6 +22,7 @@ _LOG_STRING_MAX = 500
 _LOG_LIST_MAX = 20
 
 if TYPE_CHECKING:
+    from my_family_tree.agent.traversal_subagent import SubagentRunner
     from my_family_tree.core.config import Settings
     from my_family_tree.embed.client import EmbeddingsClient
     from my_family_tree.external.genealogy import GenealogyService
@@ -41,10 +42,13 @@ class ToolContext:
     knowledge base (notes, chunk search) reuse the long-lived clients without
     each handler re-resolving them from settings. The optional `web_search`,
     `genealogy`, and `external_ingest` handles do the same for external
-    providers. All are `None` when their corresponding provider is disabled;
-    the registry's `enabled_when` gating means the chat agent never sees a
-    tool whose service is missing, but the fields stay typed-optional so
-    tests can construct contexts without wiring full services."""
+    providers. The optional `subagent_runner` lets a tool delegate work to an
+    isolated agent run (e.g. tree traversal that would otherwise bloat the
+    parent's context); the runner is opaque so leaf tools never see the LLM
+    provider directly. All are `None` when their corresponding service is
+    disabled; the registry's `enabled_when` gating means the chat agent never
+    sees a tool whose service is missing, but the fields stay typed-optional
+    so tests can construct contexts without wiring full services."""
 
     session_factory: async_sessionmaker[AsyncSession]
     tree_id: UUID
@@ -56,6 +60,7 @@ class ToolContext:
     web_search: WebSearchService | None = None
     genealogy: GenealogyService | None = None
     external_ingest: ExternalIngestService | None = None
+    subagent_runner: SubagentRunner | None = None
 
 
 class ToolHost:
@@ -65,19 +70,22 @@ class ToolHost:
         *,
         context: ToolContext,
         settings: Settings | None = None,
+        excluded_tools: frozenset[str] | None = None,
     ) -> None:
         self._registry = registry
         self._context = context
         self._settings = settings
+        self._excluded_tools: frozenset[str] = excluded_tools or frozenset()
 
     @property
     def context(self) -> ToolContext:
         return self._context
 
     def specs(self) -> list[dict[str, Any]]:
-        """Tool specs filtered by the host's capabilities and the active
-        settings (so tools whose provider is unconfigured are hidden).
-        Suitable for shipping to a provider as the agent's tool catalog."""
+        """Tool specs filtered by the host's capabilities, the active settings
+        (so tools whose provider is unconfigured are hidden), and any names in
+        `excluded_tools`. Suitable for shipping to a provider as the agent's
+        tool catalog."""
         return [
             {
                 "name": t.name,
@@ -87,9 +95,12 @@ class ToolHost:
             for t in self._registry.available(
                 capability=self._context.capabilities, settings=self._settings
             )
+            if t.name not in self._excluded_tools
         ]
 
     async def call(self, name: str, payload: dict[str, Any]) -> BaseModel:
+        if name in self._excluded_tools:
+            raise ValueError(f"unknown tool: {name}")
         try:
             tool = self._registry.get(name, settings=self._settings)
         except KeyError as e:
