@@ -211,9 +211,7 @@ async def run_traversal_subagent(  # noqa: PLR0912, PLR0915  the trace recorder 
             else:
                 trace.append({"type": "thinking", "text": text})
         elif event.type == "thinking_break":
-            # Boundary between two reasoning summary parts. Forward so the
-            # live subagent stream splits its blocks, and seal the current
-            # consolidated entry so the next thinking delta opens a new one.
+            # Seal so the next thinking_delta opens a new entry.
             _emit({"type": "thinking_break"})
             if trace and trace[-1].get("type") == "thinking":
                 trace[-1]["sealed"] = True
