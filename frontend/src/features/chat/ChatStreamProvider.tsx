@@ -166,6 +166,26 @@ function turnsFromMessages(messages: MessageRow[]): ChatTurn[] {
   return turns;
 }
 
+function appendOrMergeThinkingDelta(trace: TraceEntry[], text: string): TraceEntry[] {
+  const last = trace[trace.length - 1];
+  if (last?.kind === "thinking" && !last.sealed) {
+    const next = trace.slice(0, -1);
+    next.push({ ...last, text: last.text + text });
+    return next;
+  }
+  return [...trace, { kind: "thinking", id: crypto.randomUUID(), text }];
+}
+
+// Returns null when there is no open thinking entry to seal so callers can
+// no-op without pushing a stray placeholder pill into the trace.
+function sealLastThinkingEntry(trace: TraceEntry[]): TraceEntry[] | null {
+  const last = trace[trace.length - 1];
+  if (!last || last.kind !== "thinking" || last.sealed) return null;
+  const next = trace.slice(0, -1);
+  next.push({ ...last, sealed: true });
+  return next;
+}
+
 function applySubagentEvent(parent: ToolEntry, inner: Record<string, unknown>): ToolEntry {
   // Mutate a copy of the parent tool entry's `subagentTrace` and
   // `subagentSummary` based on a single inner event from the traversal
@@ -183,23 +203,11 @@ function applySubagentEvent(parent: ToolEntry, inner: Record<string, unknown>): 
   if (innerType === "thinking_delta") {
     const text = typeof inner.text === "string" ? inner.text : "";
     if (!text) return parent;
-    const last = trace[trace.length - 1];
-    if (last?.kind === "thinking" && !last.sealed) {
-      const next = trace.slice(0, -1);
-      next.push({ ...last, text: last.text + text });
-      return { ...parent, subagentTrace: next };
-    }
-    return {
-      ...parent,
-      subagentTrace: [...trace, { kind: "thinking", id: crypto.randomUUID(), text }],
-    };
+    return { ...parent, subagentTrace: appendOrMergeThinkingDelta(trace, text) };
   }
   if (innerType === "thinking_break") {
-    const last = trace[trace.length - 1];
-    if (!last || last.kind !== "thinking" || last.sealed) return parent;
-    const next = trace.slice(0, -1);
-    next.push({ ...last, sealed: true });
-    return { ...parent, subagentTrace: next };
+    const next = sealLastThinkingEntry(trace);
+    return next ? { ...parent, subagentTrace: next } : parent;
   }
   if (innerType === "tool_use_started") {
     const id = typeof inner.id === "string" ? inner.id : crypto.randomUUID();
@@ -564,29 +572,11 @@ export function applyEvent(turn: ChatTurn, type: string, data: SseEventData): Ch
     }
     case "thinking_delta": {
       const text = String(data?.text ?? "");
-      const trace = turn.trace ?? [];
-      const last = trace[trace.length - 1];
-      if (last?.kind === "thinking" && !last.sealed) {
-        const next = trace.slice(0, -1);
-        next.push({ ...last, text: last.text + text });
-        return { ...turn, trace: next };
-      }
-      return {
-        ...turn,
-        trace: [...trace, { kind: "thinking", id: crypto.randomUUID(), text }],
-      };
+      return { ...turn, trace: appendOrMergeThinkingDelta(turn.trace ?? [], text) };
     }
     case "thinking_break": {
-      // Boundary between two reasoning summary parts. Seal the current
-      // thinking entry so the next thinking_delta opens a fresh block, but
-      // never push an entry of our own; an empty placeholder would render
-      // as a stray "Thinking..." pill on the wire.
-      const trace = turn.trace ?? [];
-      const last = trace[trace.length - 1];
-      if (!last || last.kind !== "thinking" || last.sealed) return turn;
-      const next = trace.slice(0, -1);
-      next.push({ ...last, sealed: true });
-      return { ...turn, trace: next };
+      const next = sealLastThinkingEntry(turn.trace ?? []);
+      return next ? { ...turn, trace: next } : turn;
     }
     case "tool_use_started": {
       const id = String(data?.id ?? "");
