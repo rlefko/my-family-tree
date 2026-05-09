@@ -437,6 +437,285 @@ function orderSiblings(units: Map<string, FamilyUnit>, personById: Map<string, P
   }
 }
 
+type LayerGraph = {
+  // Per generation, the units in their current left-to-right order.
+  layers: Map<number, FamilyUnit[]>;
+  // For each unit, ids of units one layer above that connect to it.
+  upAdj: Map<string, string[]>;
+  // For each unit, ids of units one layer below that connect to it.
+  downAdj: Map<string, string[]>;
+};
+
+const MAX_SWEEPS = 24;
+
+/**
+ * Bucket the units by generation and record every inter-layer adjacency.
+ * Tree edges (parent unit -> child unit via `primaryParentUnitId`) are joined
+ * by the cross-lineage edges contributed by a couple unit's secondary spouse:
+ * if spouse B's parents live in a different unit than the couple's primary
+ * parent, we add an extra `(coupleUnit, parentUnitOfB)` adjacency. Those are
+ * exactly the edges that turn into long horizontals in the rendered chart,
+ * and feeding them to the median sweep is what shortens them.
+ */
+function buildLayerGraph(
+  units: Map<string, FamilyUnit>,
+  parentUnitOfPerson: Map<string, string>,
+  personById: Map<string, PersonNode>,
+): LayerGraph {
+  const layers = new Map<number, FamilyUnit[]>();
+  for (const unit of units.values()) {
+    const list = layers.get(unit.generation) ?? [];
+    list.push(unit);
+    layers.set(unit.generation, list);
+  }
+  for (const list of layers.values()) {
+    list.sort((a, b) =>
+      compareSiblingPersons(personById.get(a.spouses[0]), personById.get(b.spouses[0])),
+    );
+  }
+
+  const upAdj = new Map<string, string[]>();
+  const downAdj = new Map<string, string[]>();
+  const addEdge = (parentId: string, childId: string) => {
+    if (parentId === childId) return;
+    const ups = upAdj.get(childId) ?? [];
+    if (!ups.includes(parentId)) ups.push(parentId);
+    upAdj.set(childId, ups);
+    const downs = downAdj.get(parentId) ?? [];
+    if (!downs.includes(childId)) downs.push(childId);
+    downAdj.set(parentId, downs);
+  };
+
+  for (const unit of units.values()) {
+    if (unit.primaryParentUnitId) addEdge(unit.primaryParentUnitId, unit.id);
+    for (const spouseId of unit.spouses) {
+      const spouseParentUnitId = parentUnitOfPerson.get(spouseId);
+      if (!spouseParentUnitId) continue;
+      if (spouseParentUnitId === unit.primaryParentUnitId) continue;
+      if (spouseParentUnitId === unit.id) continue;
+      addEdge(spouseParentUnitId, unit.id);
+    }
+  }
+
+  return { layers, upAdj, downAdj };
+}
+
+/**
+ * Count the number of edge crossings between two adjacent layers given the
+ * current left-to-right order of each. We pull edges (upper index, lower
+ * index) and count inversions on the lower indices via a Fenwick tree, the
+ * standard O((n+|E|) log n) algorithm. For small layers an O(|E|^2) sweep
+ * would do; the Fenwick version stays fast on the rare wide layer.
+ */
+function countCrossingsBetween(
+  upper: FamilyUnit[],
+  lower: FamilyUnit[],
+  downAdj: Map<string, string[]>,
+): number {
+  if (upper.length === 0 || lower.length === 0) return 0;
+  const lowerIndex = new Map<string, number>();
+  for (let i = 0; i < lower.length; i++) lowerIndex.set(lower[i].id, i);
+
+  const edges: number[] = [];
+  for (let u = 0; u < upper.length; u++) {
+    const downs = downAdj.get(upper[u].id) ?? [];
+    const targets: number[] = [];
+    for (const downId of downs) {
+      const idx = lowerIndex.get(downId);
+      if (idx !== undefined) targets.push(idx);
+    }
+    targets.sort((a, b) => a - b);
+    for (const t of targets) edges.push(t);
+  }
+
+  const n = lower.length;
+  const tree: number[] = Array.from({ length: n + 1 }, () => 0);
+  const bitAdd = (i: number) => {
+    for (let x = i + 1; x <= n; x += x & -x) tree[x]++;
+  };
+  const bitSum = (i: number) => {
+    let s = 0;
+    for (let x = i + 1; x > 0; x -= x & -x) s += tree[x];
+    return s;
+  };
+
+  let crossings = 0;
+  let inserted = 0;
+  for (const t of edges) {
+    crossings += inserted - bitSum(t);
+    bitAdd(t);
+    inserted++;
+  }
+  return crossings;
+}
+
+function totalCrossings(graph: LayerGraph): number {
+  const gens = [...graph.layers.keys()];
+  gens.sort((a, b) => a - b);
+  let total = 0;
+  for (let i = 0; i + 1 < gens.length; i++) {
+    const upper = graph.layers.get(gens[i]) ?? [];
+    const lower = graph.layers.get(gens[i + 1]) ?? [];
+    total += countCrossingsBetween(upper, lower, graph.downAdj);
+  }
+  return total;
+}
+
+/**
+ * Median heuristic for vertex ordering inside a Sugiyama-style layout.
+ * For a unit with k neighbors at indices `i1 < i2 < ... < ik` in the
+ * adjacent layer, the median is `i_{floor((k+1)/2)}` for odd k. For even
+ * k Gansner et al. recommend a weighted midpoint: `(i_left * (right-mid) +
+ * i_right * (mid-left)) / (right-left)` where left, right are the extreme
+ * indices and mid is the geometric center. Returns `undefined` when the
+ * unit has no neighbors, telling the caller to keep the unit in place.
+ */
+function medianValue(neighborIndices: number[]): number | undefined {
+  if (neighborIndices.length === 0) return undefined;
+  const sorted = [...neighborIndices];
+  sorted.sort((a, b) => a - b);
+  const k = sorted.length;
+  if (k === 1) return sorted[0];
+  const mid = k >>> 1;
+  if (k % 2 === 1) return sorted[mid];
+  const left = sorted[mid - 1];
+  const right = sorted[mid];
+  if (sorted.length === 2) return (left + right) / 2;
+  const lo = sorted[0];
+  const hi = sorted[sorted.length - 1];
+  const leftSpan = left - lo;
+  const rightSpan = hi - right;
+  if (leftSpan + rightSpan === 0) return (left + right) / 2;
+  return (left * rightSpan + right * leftSpan) / (leftSpan + rightSpan);
+}
+
+function sortLayerByMedian(
+  layer: FamilyUnit[],
+  neighborLayer: FamilyUnit[],
+  adj: Map<string, string[]>,
+  tieBreak: (a: FamilyUnit, b: FamilyUnit) => number,
+): FamilyUnit[] {
+  if (layer.length <= 1 || neighborLayer.length === 0) return layer;
+  const neighborIndex = new Map<string, number>();
+  for (let i = 0; i < neighborLayer.length; i++) neighborIndex.set(neighborLayer[i].id, i);
+
+  const decorated = layer.map((unit, currentIndex) => {
+    const neighborIds = adj.get(unit.id) ?? [];
+    const indices: number[] = [];
+    for (const id of neighborIds) {
+      const idx = neighborIndex.get(id);
+      if (idx !== undefined) indices.push(idx);
+    }
+    return { unit, currentIndex, median: medianValue(indices) };
+  });
+
+  decorated.sort((a, b) => {
+    const am = a.median;
+    const bm = b.median;
+    if (am === undefined && bm === undefined) return tieBreak(a.unit, b.unit);
+    if (am === undefined) return a.currentIndex - b.currentIndex;
+    if (bm === undefined) return a.currentIndex - b.currentIndex;
+    if (am !== bm) return am - bm;
+    return tieBreak(a.unit, b.unit);
+  });
+  return decorated.map((d) => d.unit);
+}
+
+function cloneLayers(layers: Map<number, FamilyUnit[]>): Map<number, FamilyUnit[]> {
+  const out = new Map<number, FamilyUnit[]>();
+  for (const [k, v] of layers) out.set(k, [...v]);
+  return out;
+}
+
+/**
+ * Iterative top-down + bottom-up median sweep, the classical Sugiyama
+ * crossing-minimization phase. We track the layering with the lowest
+ * crossing count seen across all sweeps and return that, which neutralizes
+ * the two-cycle oscillation the median heuristic is known for.
+ */
+function medianSweep(graph: LayerGraph, personById: Map<string, PersonNode>): void {
+  const tieBreak = (a: FamilyUnit, b: FamilyUnit) =>
+    compareSiblingPersons(personById.get(a.spouses[0]), personById.get(b.spouses[0]));
+
+  const gens = [...graph.layers.keys()];
+  gens.sort((a, b) => a - b);
+  if (gens.length <= 1) return;
+
+  let bestCrossings = totalCrossings(graph);
+  let bestLayers = cloneLayers(graph.layers);
+
+  for (let sweep = 0; sweep < MAX_SWEEPS; sweep++) {
+    let changed = false;
+    // Top-down: each layer L picks its order from the layer above.
+    for (let i = 1; i < gens.length; i++) {
+      const layer = graph.layers.get(gens[i]) ?? [];
+      const above = graph.layers.get(gens[i - 1]) ?? [];
+      const reordered = sortLayerByMedian(layer, above, graph.upAdj, tieBreak);
+      if (reordered.some((u, idx) => u.id !== layer[idx].id)) {
+        graph.layers.set(gens[i], reordered);
+        changed = true;
+      }
+    }
+    // Bottom-up: each layer L picks its order from the layer below.
+    for (let i = gens.length - 2; i >= 0; i--) {
+      const layer = graph.layers.get(gens[i]) ?? [];
+      const below = graph.layers.get(gens[i + 1]) ?? [];
+      const reordered = sortLayerByMedian(layer, below, graph.downAdj, tieBreak);
+      if (reordered.some((u, idx) => u.id !== layer[idx].id)) {
+        graph.layers.set(gens[i], reordered);
+        changed = true;
+      }
+    }
+
+    const crossings = totalCrossings(graph);
+    if (crossings < bestCrossings) {
+      bestCrossings = crossings;
+      bestLayers = cloneLayers(graph.layers);
+    }
+    if (!changed) break;
+  }
+
+  // Restore the best layering.
+  for (const [k, v] of bestLayers) graph.layers.set(k, v);
+}
+
+/**
+ * Push the swept ordering back into the unit forest:
+ *  - Each parent's `childUnitIds` is reordered to match its children's
+ *    appearance in the layer below.
+ *  - The layer-0 order becomes the canonical root order, returned to the
+ *    caller so coordinate assignment can pack roots in the same sequence.
+ */
+function applyOrdering(graph: LayerGraph): string[] {
+  const gens = [...graph.layers.keys()];
+  gens.sort((a, b) => a - b);
+  for (let i = 0; i + 1 < gens.length; i++) {
+    const lower = graph.layers.get(gens[i + 1]) ?? [];
+    const lowerIndex = new Map<string, number>();
+    for (let j = 0; j < lower.length; j++) lowerIndex.set(lower[j].id, j);
+    const upper = graph.layers.get(gens[i]) ?? [];
+    for (const parent of upper) {
+      if (parent.childUnitIds.length <= 1) continue;
+      parent.childUnitIds.sort((a, b) => {
+        const ai = lowerIndex.get(a);
+        const bi = lowerIndex.get(b);
+        if (ai === undefined && bi === undefined) return 0;
+        if (ai === undefined) return 1;
+        if (bi === undefined) return -1;
+        return ai - bi;
+      });
+    }
+  }
+
+  const minGen = gens.length > 0 ? gens[0] : 0;
+  const rootLayer = graph.layers.get(minGen) ?? [];
+  const rootOrder: string[] = [];
+  for (const unit of rootLayer) {
+    if (!unit.primaryParentUnitId) rootOrder.push(unit.id);
+  }
+  return rootOrder;
+}
+
 function unitBarWidth(unit: FamilyUnit): number {
   return unit.spouses.length === 2
     ? NODE_WIDTH + NODESEP + UNION_WIDTH + NODESEP + NODE_WIDTH
@@ -452,6 +731,7 @@ function unitBarWidth(unit: FamilyUnit): number {
 function assignCoordinates(
   units: Map<string, FamilyUnit>,
   personById: Map<string, PersonNode>,
+  rootOrder?: string[],
 ): { personPos: Map<string, Point>; unionPos: Map<string, Point> } {
   const subtreeWidth = new Map<string, number>();
   const computeWidth = (unitId: string): number => {
@@ -470,21 +750,35 @@ function assignCoordinates(
     return w;
   };
 
-  const rootIds: string[] = [];
-  for (const unit of units.values()) {
-    if (!unit.primaryParentUnitId) rootIds.push(unit.id);
+  let rootIds: string[];
+  if (rootOrder && rootOrder.length > 0) {
+    rootIds = rootOrder.filter((id) => {
+      const u = units.get(id);
+      return u !== undefined && !u.primaryParentUnitId;
+    });
+    // Append any root units the caller forgot to mention so we never lose a
+    // node from the chart.
+    for (const unit of units.values()) {
+      if (unit.primaryParentUnitId) continue;
+      if (!rootIds.includes(unit.id)) rootIds.push(unit.id);
+    }
+  } else {
+    rootIds = [];
+    for (const unit of units.values()) {
+      if (!unit.primaryParentUnitId) rootIds.push(unit.id);
+    }
+    rootIds.sort((a, b) => {
+      const ua = units.get(a);
+      const ub = units.get(b);
+      const ga = ua?.generation ?? 0;
+      const gb = ub?.generation ?? 0;
+      if (ga !== gb) return ga - gb;
+      return compareSiblingPersons(
+        personById.get(ua?.spouses[0] ?? ""),
+        personById.get(ub?.spouses[0] ?? ""),
+      );
+    });
   }
-  rootIds.sort((a, b) => {
-    const ua = units.get(a);
-    const ub = units.get(b);
-    const ga = ua?.generation ?? 0;
-    const gb = ub?.generation ?? 0;
-    if (ga !== gb) return ga - gb;
-    return compareSiblingPersons(
-      personById.get(ua?.spouses[0] ?? ""),
-      personById.get(ub?.spouses[0] ?? ""),
-    );
-  });
   for (const id of rootIds) computeWidth(id);
 
   const personPos = new Map<string, Point>();
@@ -664,7 +958,10 @@ export function buildLayout(
     coupleEventByPair,
   );
   orderSiblings(units, personById);
-  const { personPos, unionPos } = assignCoordinates(units, personById);
+  const layerGraph = buildLayerGraph(units, parentUnitOfPerson, personById);
+  medianSweep(layerGraph, personById);
+  const rootOrder = applyOrdering(layerGraph);
+  const { personPos, unionPos } = assignCoordinates(units, personById, rootOrder);
   placeOrphanUnions(couples, unionPos, personPos);
   alignSpousesWithParents(units, parentUnitOfPerson, personPos, unionPos);
 
