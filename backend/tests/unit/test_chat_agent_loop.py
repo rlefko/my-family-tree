@@ -151,6 +151,35 @@ def _initial_messages() -> list[Message]:
 
 
 @pytest.mark.unit
+async def test_thinking_break_passes_through_as_chat_turn_event() -> None:
+    """A `thinking_break` from the provider must surface as a `thinking_break`
+    ChatTurnEvent so the SSE layer (and ultimately the chat UI) can split
+    consecutive reasoning summary parts into separate collapsed blocks."""
+    provider = FakeProvider(
+        scripts=[
+            [
+                StreamEvent(type="thinking_delta", text="**Considering options**"),
+                StreamEvent(type="thinking_break"),
+                StreamEvent(type="thinking_delta", text="**Queueing the proposal**"),
+                _usage(),
+                _done(),
+            ]
+        ]
+    )
+    host = FakeHost()
+    agent = ChatAgent(provider=provider, model="m", host=host, budgets=Budgets())
+
+    events: list[tuple[str, dict[str, Any]]] = []
+    async for evt in agent.run_turn(_initial_messages()):
+        events.append((evt.type, evt.payload))
+
+    types = [e[0] for e in events]
+    assert types == ["thinking_delta", "thinking_break", "thinking_delta", "usage", "done"]
+    breaks = [e for e in events if e[0] == "thinking_break"]
+    assert breaks == [("thinking_break", {})]
+
+
+@pytest.mark.unit
 async def test_text_only_turn_emits_deltas_and_done() -> None:
     provider = FakeProvider(scripts=[[_text("Hello"), _text(" world"), _usage(), _done()]])
     host = FakeHost()

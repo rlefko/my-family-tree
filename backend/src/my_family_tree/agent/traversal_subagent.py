@@ -205,10 +205,16 @@ async def run_traversal_subagent(  # noqa: PLR0912, PLR0915  the trace recorder 
             if not text:
                 continue
             _emit({"type": "thinking_delta", "text": text})
-            if trace and trace[-1].get("type") == "thinking":
-                trace[-1]["text"] += text
+            last = trace[-1] if trace else None
+            if last is not None and last.get("type") == "thinking" and not last.get("sealed"):
+                last["text"] += text
             else:
                 trace.append({"type": "thinking", "text": text})
+        elif event.type == "thinking_break":
+            # Seal so the next thinking_delta opens a new entry.
+            _emit({"type": "thinking_break"})
+            if trace and trace[-1].get("type") == "thinking":
+                trace[-1]["sealed"] = True
         elif event.type == "tool_use_started":
             tid = str(event.payload.get("id") or "")
             name = str(event.payload.get("name") or "")
