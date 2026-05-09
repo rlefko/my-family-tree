@@ -257,6 +257,11 @@ def _translate_openai_event(raw: Any, item_to_call_id: dict[str, str]) -> list[S
         # raw reasoning is never persisted.
         events.append(StreamEvent(type="thinking_delta", text=getattr(raw, "delta", "") or ""))
 
+    elif event_type == "response.reasoning_summary_part.added":
+        # Each reasoning summary part is a distinct section, so emit a
+        # boundary the chat UI can split consecutive parts on.
+        events.append(StreamEvent(type="thinking_break"))
+
     elif event_type == "response.output_item.added":
         item = getattr(raw, "item", None)
         if item is not None and getattr(item, "type", None) == "function_call":

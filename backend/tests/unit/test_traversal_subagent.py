@@ -135,6 +135,77 @@ async def test_run_traversal_subagent_persists_thinking_in_trace() -> None:
 
 
 @pytest.mark.unit
+async def test_run_traversal_subagent_splits_thinking_on_break() -> None:
+    """A `thinking_break` between two thinking deltas seals the current
+    consolidated entry so the next delta opens a new one. Forwards the same
+    boundary on the sink so the live subagent stream splits into separate
+    blocks."""
+    provider = _FakeProvider(
+        scripts=[
+            [
+                StreamEvent(type="thinking_delta", text="**Considering options**"),
+                StreamEvent(type="thinking_break"),
+                StreamEvent(type="thinking_delta", text="**Queueing**"),
+                _text("Done."),
+                _usage(),
+                _done(),
+            ],
+        ]
+    )
+    captured: list[dict[str, Any]] = []
+
+    class _CapturingSink:
+        def emit(self, event: dict[str, Any]) -> None:
+            captured.append(event)
+
+    with subagent_event_sink_scope(_CapturingSink()):
+        result = await run_traversal_subagent(
+            question="?",
+            person_id=uuid4(),
+            max_generations=1,
+            provider=cast(Any, provider),
+            model="m",
+            parent_ctx=_parent_ctx(),
+        )
+
+    assert result.trace[0] == {
+        "type": "thinking",
+        "text": "**Considering options**",
+        "sealed": True,
+    }
+    assert result.trace[1] == {"type": "thinking", "text": "**Queueing**"}
+    assert result.trace[2] == {"type": "text", "text": "Done."}
+
+    types = [c["type"] for c in captured]
+    assert types == ["thinking_delta", "thinking_break", "thinking_delta", "text_delta"]
+
+
+@pytest.mark.unit
+async def test_run_traversal_subagent_ignores_break_with_no_open_thinking_entry() -> None:
+    """A `thinking_break` that arrives before any thinking text (or after a
+    text/tool entry) must not seal anything or push a stray entry."""
+    provider = _FakeProvider(
+        scripts=[
+            [
+                StreamEvent(type="thinking_break"),
+                _text("Done."),
+                _usage(),
+                _done(),
+            ],
+        ]
+    )
+    result = await run_traversal_subagent(
+        question="?",
+        person_id=uuid4(),
+        max_generations=1,
+        provider=cast(Any, provider),
+        model="m",
+        parent_ctx=_parent_ctx(),
+    )
+    assert result.trace == [{"type": "text", "text": "Done."}]
+
+
+@pytest.mark.unit
 async def test_run_traversal_subagent_records_open_tool_when_stream_truncates() -> None:
     """If a stream emits `tool_use_started` and an input delta but ends
     before the loop finishes the call, the trace still carries a tool entry

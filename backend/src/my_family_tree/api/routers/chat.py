@@ -30,6 +30,7 @@ from my_family_tree.llm.base import (
     ContentBlock,
     ImageBlock,
     Message as LLMMessage,
+    ReasoningConfig,
     TextBlock,
     ToolResultBlock,
     ToolUseBlock,
@@ -228,11 +229,15 @@ def _agent_for_request(
         subagent_runner=TraversalSubagentRunner(provider=provider, model=model),
     )
     host = ToolHost(get_registry(), context=ctx, settings=get_settings())
+    # Chat-facing latency trim. The traversal subagent intentionally keeps
+    # the thorough ChatAgent defaults so deep walks stay deliberate.
     return ChatAgent(
         provider=provider,
         model=model,
         host=host,
         budgets=Budgets(),
+        reasoning=ReasoningConfig(effort="low"),
+        max_output_tokens=12288,
     )
 
 

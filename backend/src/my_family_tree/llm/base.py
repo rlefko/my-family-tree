@@ -90,6 +90,7 @@ class StreamEvent:
     type: Literal[
         "text_delta",
         "thinking_delta",
+        "thinking_break",
         "tool_use_started",
         "tool_use_input_delta",
         "tool_use_finished",
