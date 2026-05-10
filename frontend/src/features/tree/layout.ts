@@ -870,12 +870,9 @@ function alignSpousesWithParents(
 
 /**
  * Sum the absolute horizontal distance between every parent edge's source
- * anchor (the parent unit's heart for couples, card center for solos) and
- * its target child card center. Tree edges contribute when the swap
- * optimizer or sibling inference puts a child far from its parent's bar;
- * cross-lineage edges contribute when a couple's secondary spouse comes
- * from another lineage. Both are visible to the user as long horizontals,
- * so we treat them equally.
+ * anchor (parent unit heart for couples, card center for solos) and its
+ * target child card center. Tree edges and cross-lineage edges are both
+ * user-visible long horizontals, so we treat them equally.
  */
 function totalParentEdgeLength(
   units: Map<string, FamilyUnit>,
@@ -920,12 +917,11 @@ type RunLayout = (rootOrder: string[]) => {
 
 /**
  * Hill-climb on adjacent-pair swaps of root units and of every parent's
- * `childUnitIds` to reduce the total cross-lineage edge length. The cost
- * is recomputed with the full layout (assignCoordinates + placeOrphanUnions
- * + alignSpousesWithParents) on every candidate swap so it reflects what
- * the user actually sees. Strict-less-than acceptance can't oscillate, so
- * the loop monotonically converges; the iteration cap is just paranoia
- * against pathological inputs.
+ * `childUnitIds` to reduce total parent-edge length. Cost is recomputed
+ * with the full layout on every candidate so it reflects what the user
+ * actually sees. Strict-less-than acceptance is monotonic, so the loop
+ * terminates as soon as a full pass accepts no swap; the iteration cap
+ * is defense in depth.
  */
 function optimizeOrderings(
   units: Map<string, FamilyUnit>,
@@ -1095,9 +1091,7 @@ function shiftSubtreeByX(
  * For each couple unit whose two spouses come from different parent units,
  * shift the unit's entire descendant subtree toward the midpoint of the
  * two parent unions' x anchors. The shift is clipped by sibling and
- * neighbor-subtree bounds, so the move never overlaps anything; if the
- * neighbors leave no room, the couple stays where the swap optimizer put
- * it.
+ * neighbor-subtree bounds so the move never overlaps anything.
  */
 function centerJoinedCouples(
   units: Map<string, FamilyUnit>,
@@ -1193,12 +1187,8 @@ export function buildLayout(
   const layerGraph = buildLayerGraph(units, parentUnitOfPerson, personById);
   medianSweep(layerGraph, personById);
   const rootOrder = applyOrdering(layerGraph);
-  // The cost function inside `optimizeOrderings` runs the full layout —
-  // including centering — so the swap loop chooses orderings that survive
-  // the centering pass with the shortest cross-lineage edges. Without
-  // centering inside the loop, the swap loop would pick orderings that
-  // look good before centering and then get nudged into something worse
-  // by the centering pass.
+  // Cost is recomputed after centering so the swap loop picks orderings
+  // that stay short under the centering pass.
   const runLayout: RunLayout = (order) => {
     const positions = assignCoordinates(units, order);
     placeOrphanUnions(couples, positions.unionPos, positions.personPos);

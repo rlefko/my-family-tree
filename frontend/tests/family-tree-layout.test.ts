@@ -675,10 +675,8 @@ describe("buildLayout (family tree)", () => {
   });
 
   it("centers a joined couple roughly between its two parent unions", () => {
-    // Mom A + Dad A and Mom B + Dad B are roots; Joined A + Joined B is the
-    // child couple. Without centering the joined couple is parked under one
-    // root; with centering it sits near the midpoint of the two parent
-    // hearts so the cross-lineage edge is short.
+    // Two parent couples and one joined-couple child; the centering pass
+    // should pull the child heart toward the midpoint of the parent hearts.
     const persons = [
       makePerson("p-momA", "Mom A", "1940"),
       makePerson("p-dadA", "Dad A", "1940"),
@@ -715,15 +713,12 @@ describe("buildLayout (family tree)", () => {
     const bCenter = (bHeart?.position.x ?? 0) + UNION_WIDTH / 2;
     const target = (aCenter + bCenter) / 2;
     const childCenter = (childHeart?.position.x ?? 0) + UNION_WIDTH / 2;
-    // After centering, the joined couple's heart should sit within
-    // NODE_WIDTH of the midpoint of its parent hearts.
     expect(Math.abs(childCenter - target)).toBeLessThan(NODE_WIDTH);
   });
 
   it("respects sibling boundaries when centering a joined couple", () => {
-    // Mom A + Dad A have THREE children. The middle one is joined to a child
-    // of Mom B + Dad B. Centering should not push the joined couple past its
-    // siblings' bounds even if the parent unions are far apart.
+    // Three children under Mom A + Dad A; the middle one is joined to a
+    // child of Mom B + Dad B. Centering must not push past sibling bounds.
     const persons = [
       makePerson("p-momA", "Mom A", "1940"),
       makePerson("p-dadA", "Dad A", "1940"),
@@ -757,8 +752,7 @@ describe("buildLayout (family tree)", () => {
 
     // Siblings can end up in any order (the swap optimizer is allowed to
     // pull the joined sibling toward Mom B's side), but all three must sit
-    // in distinct, non-overlapping x slots — that's the invariant the
-    // centering pass's bounds-clipping guarantees.
+    // in distinct, non-overlapping x slots.
     const sibs = [xOf(nodes, "sib-1"), xOf(nodes, "child-a"), xOf(nodes, "sib-2")];
     sibs.sort((a, b) => a - b);
     expect(sibs[0] + NODE_WIDTH).toBeLessThanOrEqual(sibs[1]);
