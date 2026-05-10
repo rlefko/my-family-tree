@@ -438,11 +438,8 @@ function orderSiblings(units: Map<string, FamilyUnit>, personById: Map<string, P
 }
 
 type LayerGraph = {
-  // Per generation, the units in their current left-to-right order.
   layers: Map<number, FamilyUnit[]>;
-  // For each unit, ids of units one layer above that connect to it.
   upAdj: Map<string, string[]>;
-  // For each unit, ids of units one layer below that connect to it.
   downAdj: Map<string, string[]>;
 };
 
@@ -650,7 +647,6 @@ function medianSweep(graph: LayerGraph, personById: Map<string, PersonNode>): vo
 
   for (let sweep = 0; sweep < MAX_SWEEPS; sweep++) {
     let changed = false;
-    // Top-down: each layer L picks its order from the layer above.
     for (let i = 1; i < gens.length; i++) {
       const layer = graph.layers.get(gens[i]) ?? [];
       const above = graph.layers.get(gens[i - 1]) ?? [];
@@ -660,7 +656,6 @@ function medianSweep(graph: LayerGraph, personById: Map<string, PersonNode>): vo
         changed = true;
       }
     }
-    // Bottom-up: each layer L picks its order from the layer below.
     for (let i = gens.length - 2; i >= 0; i--) {
       const layer = graph.layers.get(gens[i]) ?? [];
       const below = graph.layers.get(gens[i + 1]) ?? [];
@@ -679,17 +674,15 @@ function medianSweep(graph: LayerGraph, personById: Map<string, PersonNode>): vo
     if (!changed) break;
   }
 
-  // Restore the best layering.
   for (const [k, v] of bestLayers) graph.layers.set(k, v);
 }
 
 /**
- * Push the swept ordering back into the unit forest:
- *  - Each parent's `childUnitIds` is reordered to match its children's
- *    appearance in the layer below.
- *  - Parentless units of every layer are concatenated into a single
- *    canonical root order, so coordinate assignment can pack them in the
- *    same sequence the sweep settled on.
+ * Push the swept layer ordering back into the unit forest. Each parent's
+ * `childUnitIds` is re-sorted by where its children sit in the layer below,
+ * and the parentless units of every layer are concatenated into a single
+ * canonical root order so coordinate assignment can pack them in the same
+ * sequence the sweep settled on.
  */
 function applyOrdering(graph: LayerGraph): string[] {
   const gens = [...graph.layers.keys()];
