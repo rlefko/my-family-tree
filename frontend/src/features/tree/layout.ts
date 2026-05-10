@@ -884,6 +884,15 @@ function totalParentEdgeLength(
   personPos: Map<string, Point>,
   unionPos: Map<string, Point>,
 ): number {
+  const anchorByUnit = new Map<string, number | null>();
+  const anchorOf = (parentUnitId: string): number | null => {
+    const cached = anchorByUnit.get(parentUnitId);
+    if (cached !== undefined) return cached;
+    const x = parentAnchorX(units.get(parentUnitId), personPos, unionPos);
+    anchorByUnit.set(parentUnitId, x);
+    return x;
+  };
+
   let total = 0;
   for (const [childId, parentList] of parents) {
     const childPos = personPos.get(childId);
@@ -894,7 +903,7 @@ function totalParentEdgeLength(
       const parentUnitId = unitOfPerson.get(parentId);
       if (!parentUnitId || seenParentUnits.has(parentUnitId)) continue;
       seenParentUnits.add(parentUnitId);
-      const parentX = parentAnchorX(units.get(parentUnitId), personPos, unionPos);
+      const parentX = anchorOf(parentUnitId);
       if (parentX === null) continue;
       total += Math.abs(parentX - childCenter);
     }
