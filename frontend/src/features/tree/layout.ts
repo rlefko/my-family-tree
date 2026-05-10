@@ -1041,14 +1041,6 @@ function subtreeShiftBounds(
 
   let minLeft = -Infinity;
   let maxRight = Infinity;
-  const allPersonIds = new Set<string>();
-  const allUnionIds = new Set<string>();
-  for (const id of subtreeIds) {
-    const u = units.get(id);
-    if (!u) continue;
-    for (const sp of u.spouses) allPersonIds.add(sp);
-    if (u.unionId !== undefined) allUnionIds.add(u.unionId);
-  }
 
   for (const box of boxes) {
     let leftBlocker = -Infinity;
@@ -1057,7 +1049,6 @@ function subtreeShiftBounds(
       if (u.generation !== box.gen) continue;
       if (subtreeIds.has(u.id)) continue;
       for (const sp of u.spouses) {
-        if (allPersonIds.has(sp)) continue;
         const pos = personPos.get(sp);
         if (!pos) continue;
         const lo = pos.x;
@@ -1065,7 +1056,7 @@ function subtreeShiftBounds(
         if (hi <= box.left) leftBlocker = Math.max(leftBlocker, hi);
         else if (lo >= box.right) rightBlocker = Math.min(rightBlocker, lo);
       }
-      if (u.unionId !== undefined && !allUnionIds.has(u.unionId)) {
+      if (u.unionId !== undefined) {
         const pos = unionPos.get(u.unionId);
         if (pos) {
           const lo = pos.x;
@@ -1081,8 +1072,6 @@ function subtreeShiftBounds(
     maxRight = Math.min(maxRight, rightRoom);
   }
 
-  if (minLeft === -Infinity) minLeft = -Infinity;
-  if (maxRight === Infinity) maxRight = Infinity;
   return { minLeft: Math.min(0, minLeft), maxRight: Math.max(0, maxRight) };
 }
 
