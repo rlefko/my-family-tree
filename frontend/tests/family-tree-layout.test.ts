@@ -73,6 +73,14 @@ function expectFinitePosition(node: LayoutNode) {
   expect(Number.isFinite(node.position.y)).toBe(true);
 }
 
+function xOf(nodes: LayoutNode[], id: string): number {
+  return findNode(nodes, id).position.x;
+}
+
+function makePerson(id: string, name: string, birth: string | null = null) {
+  return { ...personA, id, display_name: name, birth_text: birth };
+}
+
 function makeRel(id: string, subject: string, object: string, type: "parent_of" | "spouse_of") {
   return { id, subject_id: subject, object_id: object, type, confidence: 100 };
 }
@@ -263,9 +271,8 @@ describe("buildLayout (family tree)", () => {
         { id: "r3", subject_id: "p-a", object_id: "p-young", type: "parent_of", confidence: 100 },
       ],
     });
-    const xOf = (id: string) => findNode(nodes, id).position.x;
-    expect(xOf("p-old")).toBeLessThan(xOf("p-mid"));
-    expect(xOf("p-mid")).toBeLessThan(xOf("p-young"));
+    expect(xOf(nodes, "p-old")).toBeLessThan(xOf(nodes, "p-mid"));
+    expect(xOf(nodes, "p-mid")).toBeLessThan(xOf(nodes, "p-young"));
   });
 
   it("places undated siblings after dated ones, alphabetical within", () => {
@@ -281,9 +288,8 @@ describe("buildLayout (family tree)", () => {
         { id: "r3", subject_id: "p-a", object_id: "p-alex", type: "parent_of", confidence: 100 },
       ],
     });
-    const xOf = (id: string) => findNode(nodes, id).position.x;
-    expect(xOf("p-dated")).toBeLessThan(xOf("p-alex"));
-    expect(xOf("p-alex")).toBeLessThan(xOf("p-zoe"));
+    expect(xOf(nodes, "p-dated")).toBeLessThan(xOf(nodes, "p-alex"));
+    expect(xOf(nodes, "p-alex")).toBeLessThan(xOf(nodes, "p-zoe"));
   });
 
   it("aligns each generation on a common y", () => {
@@ -528,5 +534,143 @@ describe("buildLayout (family tree)", () => {
     const bobX = findNode(nodes, "p-bob").position.x;
     // Default sort keeps "p-alice" < "p-bob", so Alice stays on the left.
     expect(aliceX).toBeLessThan(bobX);
+  });
+
+  it("regroups roots so a joined couple's parents end up adjacent", () => {
+    // Two unrelated parent couples and one joined-couple child. Without the
+    // median sweep, roots are sorted by birth year alone, which can wedge an
+    // unrelated root between the two joined-couple parents and force a long
+    // cross-lineage edge. With the sweep, the joined-couple parents collapse
+    // toward each other and the unrelated root ends up at one end.
+    const persons = [
+      makePerson("p-strangers-a", "Stranger A", "1925"),
+      makePerson("p-strangers-b", "Stranger B", "1928"),
+      makePerson("p-momA", "Mom A", "1940"),
+      makePerson("p-dadA", "Dad A", "1940"),
+      makePerson("p-momB", "Mom B", "1950"),
+      makePerson("p-dadB", "Dad B", "1950"),
+      makePerson("p-childA", "Joined A", "1972"),
+      makePerson("p-childB", "Joined B", "1972"),
+    ];
+    const { nodes } = buildLayout({
+      persons,
+      couple_events: [],
+      relationships: [
+        // Three parent couples: two are joined to a child couple, one isn't.
+        makeRel("r1", "p-strangers-a", "p-strangers-b", "spouse_of"),
+        makeRel("r2", "p-strangers-b", "p-strangers-a", "spouse_of"),
+        makeRel("r3", "p-momA", "p-dadA", "spouse_of"),
+        makeRel("r4", "p-dadA", "p-momA", "spouse_of"),
+        makeRel("r5", "p-momB", "p-dadB", "spouse_of"),
+        makeRel("r6", "p-dadB", "p-momB", "spouse_of"),
+        // Joined couple: child of (Mom A + Dad A) marries child of (Mom B + Dad B).
+        makeRel("r7", "p-momA", "p-childA", "parent_of"),
+        makeRel("r8", "p-dadA", "p-childA", "parent_of"),
+        makeRel("r9", "p-momB", "p-childB", "parent_of"),
+        makeRel("r10", "p-dadB", "p-childB", "parent_of"),
+        makeRel("r11", "p-childA", "p-childB", "spouse_of"),
+        makeRel("r12", "p-childB", "p-childA", "spouse_of"),
+      ],
+    });
+
+    const dadAX = xOf(nodes, "p-dadA");
+    const dadBX = xOf(nodes, "p-dadB");
+    const strangerAX = xOf(nodes, "p-strangers-a");
+    // The unrelated couple (Stranger A + B) must sit outside the
+    // (Mom A/Dad A, Mom B/Dad B) span, not wedged between them.
+    const joinedSpan: [number, number] = [Math.min(dadAX, dadBX), Math.max(dadAX, dadBX)];
+    expect(strangerAX < joinedSpan[0] || strangerAX > joinedSpan[1]).toBe(true);
+  });
+
+  it("preserves birth-year sibling order when no cross-lineage pulls exist", () => {
+    // The same scenario as the existing birth-year ordering test, but here
+    // we explicitly check that the median sweep doesn't shuffle siblings
+    // when there's nothing to optimize against.
+    const { nodes } = buildLayout({
+      persons: [
+        makePerson("p-mom", "Mom"),
+        makePerson("p-old", "Eldest", "1980"),
+        makePerson("p-mid", "Middle", "1984"),
+        makePerson("p-yng", "Youngest", "1988"),
+      ],
+      couple_events: [],
+      relationships: [
+        makeRel("r1", "p-mom", "p-old", "parent_of"),
+        makeRel("r2", "p-mom", "p-mid", "parent_of"),
+        makeRel("r3", "p-mom", "p-yng", "parent_of"),
+      ],
+    });
+    expect(xOf(nodes, "p-old")).toBeLessThan(xOf(nodes, "p-mid"));
+    expect(xOf(nodes, "p-mid")).toBeLessThan(xOf(nodes, "p-yng"));
+  });
+
+  it("converges on a graph with multiple joined couples without crashing", () => {
+    // Two joined couples cross each other through their child couples'
+    // children. Verify finite positions and no thrown errors.
+    const persons = [
+      makePerson("a-mom", "a-mom", "1920"),
+      makePerson("a-dad", "a-dad", "1920"),
+      makePerson("b-mom", "b-mom", "1925"),
+      makePerson("b-dad", "b-dad", "1925"),
+      makePerson("c-mom", "c-mom", "1928"),
+      makePerson("c-dad", "c-dad", "1928"),
+      makePerson("a-kid", "a-kid", "1948"),
+      makePerson("b-kid", "b-kid", "1948"),
+      makePerson("c-kid", "c-kid", "1950"),
+      makePerson("d-kid", "d-kid", "1950"),
+      makePerson("g1", "g1", "1972"),
+      makePerson("g2", "g2", "1974"),
+    ];
+    const { nodes } = buildLayout({
+      persons,
+      couple_events: [],
+      relationships: [
+        makeRel("r1", "a-mom", "a-dad", "spouse_of"),
+        makeRel("r2", "a-dad", "a-mom", "spouse_of"),
+        makeRel("r3", "b-mom", "b-dad", "spouse_of"),
+        makeRel("r4", "b-dad", "b-mom", "spouse_of"),
+        makeRel("r5", "c-mom", "c-dad", "spouse_of"),
+        makeRel("r6", "c-dad", "c-mom", "spouse_of"),
+        makeRel("r7", "a-mom", "a-kid", "parent_of"),
+        makeRel("r8", "a-dad", "a-kid", "parent_of"),
+        makeRel("r9", "b-mom", "b-kid", "parent_of"),
+        makeRel("r10", "b-dad", "b-kid", "parent_of"),
+        makeRel("r11", "c-mom", "c-kid", "parent_of"),
+        makeRel("r12", "c-dad", "c-kid", "parent_of"),
+        makeRel("r13", "c-mom", "d-kid", "parent_of"),
+        makeRel("r14", "c-dad", "d-kid", "parent_of"),
+        makeRel("r15", "a-kid", "b-kid", "spouse_of"),
+        makeRel("r16", "b-kid", "a-kid", "spouse_of"),
+        makeRel("r17", "c-kid", "d-kid", "spouse_of"),
+        makeRel("r18", "d-kid", "c-kid", "spouse_of"),
+        makeRel("r19", "a-kid", "g1", "parent_of"),
+        makeRel("r20", "b-kid", "g1", "parent_of"),
+        makeRel("r21", "c-kid", "g2", "parent_of"),
+        makeRel("r22", "d-kid", "g2", "parent_of"),
+      ],
+    });
+    expect(nodes.length).toBeGreaterThan(0);
+    for (const node of nodes) expectFinitePosition(node);
+  });
+
+  it("handles a wide sibship without spinning out", () => {
+    // 12 siblings under one parent couple: the median sweep must still
+    // finish quickly and produce finite positions.
+    const persons = [makePerson("wide-mom", "Mom"), makePerson("wide-dad", "Dad")];
+    const rels = [
+      makeRel("r-spouse-1", "wide-mom", "wide-dad", "spouse_of"),
+      makeRel("r-spouse-2", "wide-dad", "wide-mom", "spouse_of"),
+    ];
+    for (let i = 0; i < 12; i++) {
+      const id = `wide-kid-${i}`;
+      persons.push(makePerson(id, `Kid ${i}`, `${1970 + i}`));
+      rels.push(makeRel(`r-mom-${i}`, "wide-mom", id, "parent_of"));
+      rels.push(makeRel(`r-dad-${i}`, "wide-dad", id, "parent_of"));
+    }
+    const start = Date.now();
+    const { nodes } = buildLayout({ persons, couple_events: [], relationships: rels });
+    const elapsed = Date.now() - start;
+    expect(elapsed).toBeLessThan(500);
+    for (const node of nodes) expectFinitePosition(node);
   });
 });
