@@ -448,6 +448,12 @@ type LayerGraph = {
 
 const MAX_SWEEPS = 24;
 
+function buildIndexMap(units: FamilyUnit[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (let i = 0; i < units.length; i++) out.set(units[i].id, i);
+  return out;
+}
+
 /**
  * Bucket the units by generation and record every inter-layer adjacency.
  * Tree edges (parent unit -> child unit via `primaryParentUnitId`) are joined
@@ -513,8 +519,7 @@ function countCrossingsBetween(
   downAdj: Map<string, string[]>,
 ): number {
   if (upper.length === 0 || lower.length === 0) return 0;
-  const lowerIndex = new Map<string, number>();
-  for (let i = 0; i < lower.length; i++) lowerIndex.set(lower[i].id, i);
+  const lowerIndex = buildIndexMap(lower);
 
   const edges: number[] = [];
   for (let u = 0; u < upper.length; u++) {
@@ -596,8 +601,7 @@ function sortLayerByMedian(
   tieBreak: (a: FamilyUnit, b: FamilyUnit) => number,
 ): FamilyUnit[] {
   if (layer.length <= 1 || neighborLayer.length === 0) return layer;
-  const neighborIndex = new Map<string, number>();
-  for (let i = 0; i < neighborLayer.length; i++) neighborIndex.set(neighborLayer[i].id, i);
+  const neighborIndex = buildIndexMap(neighborLayer);
 
   const decorated = layer.map((unit, currentIndex) => {
     const neighborIds = adj.get(unit.id) ?? [];
@@ -691,8 +695,7 @@ function applyOrdering(graph: LayerGraph): string[] {
   gens.sort((a, b) => a - b);
   for (let i = 0; i + 1 < gens.length; i++) {
     const lower = graph.layers.get(gens[i + 1]) ?? [];
-    const lowerIndex = new Map<string, number>();
-    for (let j = 0; j < lower.length; j++) lowerIndex.set(lower[j].id, j);
+    const lowerIndex = buildIndexMap(lower);
     const upper = graph.layers.get(gens[i]) ?? [];
     for (const parent of upper) {
       if (parent.childUnitIds.length <= 1) continue;
