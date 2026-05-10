@@ -758,4 +758,136 @@ describe("buildLayout (family tree)", () => {
     expect(sibs[0] + NODE_WIDTH).toBeLessThanOrEqual(sibs[1]);
     expect(sibs[1] + NODE_WIDTH).toBeLessThanOrEqual(sibs[2]);
   });
+
+  it("lifts a sibling alongside their spouse-lifted brother", () => {
+    // Anne + Ben are roots with two kids: Hank and Greg. Greg marries
+    // Fiona who's three generations down a separate Doe lineage.
+    // Without the sibling-lift, Greg jumps to Fiona's row and Hank
+    // stays at the original row. With it, Hank rides up beside Greg.
+    const persons = [
+      makePerson("p-carol", "Anne"),
+      makePerson("p-irwin", "Ben"),
+      makePerson("p-steven", "Hank", "1965"),
+      makePerson("p-gary", "Greg", "1971"),
+      makePerson("p-abram", "Lou"),
+      makePerson("p-sarah-k", "May Kay"),
+      makePerson("p-louis", "Norm", "1900"),
+      makePerson("p-bill", "Owen", "1930"),
+      makePerson("p-rebecca", "Fiona", "1971"),
+    ];
+    const { nodes } = buildLayout({
+      persons,
+      couple_events: [],
+      relationships: [
+        makeRel("r1", "p-carol", "p-irwin", "spouse_of"),
+        makeRel("r2", "p-irwin", "p-carol", "spouse_of"),
+        makeRel("r3", "p-carol", "p-steven", "parent_of"),
+        makeRel("r4", "p-irwin", "p-steven", "parent_of"),
+        makeRel("r5", "p-carol", "p-gary", "parent_of"),
+        makeRel("r6", "p-irwin", "p-gary", "parent_of"),
+        // Three-deep Doe lineage Fiona descends from
+        makeRel("r7", "p-abram", "p-sarah-k", "spouse_of"),
+        makeRel("r8", "p-sarah-k", "p-abram", "spouse_of"),
+        makeRel("r9", "p-abram", "p-louis", "parent_of"),
+        makeRel("r10", "p-sarah-k", "p-louis", "parent_of"),
+        makeRel("r11", "p-louis", "p-bill", "parent_of"),
+        makeRel("r12", "p-bill", "p-rebecca", "parent_of"),
+        makeRel("r13", "p-gary", "p-rebecca", "spouse_of"),
+        makeRel("r14", "p-rebecca", "p-gary", "spouse_of"),
+      ],
+    });
+    expect(findNode(nodes, "p-gary").position.y).toBe(findNode(nodes, "p-steven").position.y);
+    expect(findNode(nodes, "p-gary").position.y).toBe(findNode(nodes, "p-rebecca").position.y);
+  });
+
+  it("pushes the lifted siblings' parents up by one row", () => {
+    // Same shape: Anne + Ben are roots, both their kids end up at the
+    // deepest Doe row, so Anne + Ben must sit one row above their
+    // kids even though they have no recorded ancestors of their own.
+    const persons = [
+      makePerson("p-carol", "Anne"),
+      makePerson("p-irwin", "Ben"),
+      makePerson("p-steven", "Hank", "1965"),
+      makePerson("p-gary", "Greg", "1971"),
+      makePerson("p-bill", "Owen"),
+      makePerson("p-rebecca", "Fiona", "1971"),
+    ];
+    const { nodes } = buildLayout({
+      persons,
+      couple_events: [],
+      relationships: [
+        makeRel("r1", "p-carol", "p-irwin", "spouse_of"),
+        makeRel("r2", "p-irwin", "p-carol", "spouse_of"),
+        makeRel("r3", "p-carol", "p-steven", "parent_of"),
+        makeRel("r4", "p-irwin", "p-steven", "parent_of"),
+        makeRel("r5", "p-carol", "p-gary", "parent_of"),
+        makeRel("r6", "p-irwin", "p-gary", "parent_of"),
+        makeRel("r7", "p-bill", "p-rebecca", "parent_of"),
+        makeRel("r8", "p-gary", "p-rebecca", "spouse_of"),
+        makeRel("r9", "p-rebecca", "p-gary", "spouse_of"),
+      ],
+    });
+    const garyY = findNode(nodes, "p-gary").position.y;
+    const carolY = findNode(nodes, "p-carol").position.y;
+    expect(carolY).toBeLessThan(garyY);
+    // Anne + Ben should be EXACTLY one row above Greg, not several.
+    expect(garyY - carolY).toBe(NODE_HEIGHT + 80);
+  });
+
+  it("cascades the lift through several ancestor levels", () => {
+    // Three-generation shallow branch on the left, four-generation deep
+    // branch on the right. Spouse at the bottom of the shallow branch
+    // marries someone at the bottom of the deep branch, lifting the
+    // shallow branch's whole ancestry up by one row.
+    const persons = [
+      makePerson("s-gp1", "GP1"),
+      makePerson("s-gp2", "GP2"),
+      makePerson("s-p", "Parent S"),
+      makePerson("s-c", "Child S", "1980"),
+      makePerson("d-gp1", "DGP1"),
+      makePerson("d-gp2", "DGP2"),
+      makePerson("d-p1", "DP1"),
+      makePerson("d-p2", "DP2"),
+      makePerson("d-c1", "DC1"),
+      makePerson("d-c2", "DC2"),
+      makePerson("d-bottom", "Bottom D", "1980"),
+    ];
+    const { nodes } = buildLayout({
+      persons,
+      couple_events: [],
+      relationships: [
+        // Shallow side: GP1 + GP2 -> Parent S -> Child S
+        makeRel("r1", "s-gp1", "s-gp2", "spouse_of"),
+        makeRel("r2", "s-gp2", "s-gp1", "spouse_of"),
+        makeRel("r3", "s-gp1", "s-p", "parent_of"),
+        makeRel("r4", "s-gp2", "s-p", "parent_of"),
+        makeRel("r5", "s-p", "s-c", "parent_of"),
+        // Deep side: DGP1 + DGP2 -> DP1 -> DC1 -> Bottom D, plus spouses
+        makeRel("r6", "d-gp1", "d-gp2", "spouse_of"),
+        makeRel("r7", "d-gp2", "d-gp1", "spouse_of"),
+        makeRel("r8", "d-gp1", "d-p1", "parent_of"),
+        makeRel("r9", "d-gp2", "d-p1", "parent_of"),
+        makeRel("r10", "d-p1", "d-p2", "spouse_of"),
+        makeRel("r11", "d-p2", "d-p1", "spouse_of"),
+        makeRel("r12", "d-p1", "d-c1", "parent_of"),
+        makeRel("r13", "d-p2", "d-c1", "parent_of"),
+        makeRel("r14", "d-c1", "d-c2", "spouse_of"),
+        makeRel("r15", "d-c2", "d-c1", "spouse_of"),
+        makeRel("r16", "d-c1", "d-bottom", "parent_of"),
+        makeRel("r17", "d-c2", "d-bottom", "parent_of"),
+        // Cross-marriage at the bottom
+        makeRel("r18", "s-c", "d-bottom", "spouse_of"),
+        makeRel("r19", "d-bottom", "s-c", "spouse_of"),
+      ],
+    });
+    // Bottom D and Child S must end up on the same row.
+    expect(findNode(nodes, "s-c").position.y).toBe(findNode(nodes, "d-bottom").position.y);
+    // Their parents (Parent S and DC1 + DC2) must be one row up.
+    const bottomY = findNode(nodes, "d-bottom").position.y;
+    expect(findNode(nodes, "s-p").position.y).toBe(bottomY - (NODE_HEIGHT + 80));
+    expect(findNode(nodes, "d-c1").position.y).toBe(bottomY - (NODE_HEIGHT + 80));
+    // And their grandparents (GP1 + GP2 on the shallow side) must be two
+    // rows up, even though shallow GP1 + GP2 are roots with no ancestors.
+    expect(findNode(nodes, "s-gp1").position.y).toBe(bottomY - 2 * (NODE_HEIGHT + 80));
+  });
 });
