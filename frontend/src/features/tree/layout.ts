@@ -986,45 +986,6 @@ function collectSubtreeUnitIds(root: FamilyUnit, units: Map<string, FamilyUnit>)
   return out;
 }
 
-type SubtreeBox = { gen: number; left: number; right: number };
-
-/**
- * Per generation, the leftmost and rightmost x covered by `subtreeIds`'s
- * person and union nodes. Used to compute how far the subtree can shift
- * before bumping into a sibling or neighbor at the same row.
- */
-function subtreeBoxes(
-  subtreeIds: Set<string>,
-  units: Map<string, FamilyUnit>,
-  personPos: Map<string, Point>,
-  unionPos: Map<string, Point>,
-): SubtreeBox[] {
-  const byGen = new Map<number, { left: number; right: number }>();
-  const expand = (gen: number, lo: number, hi: number) => {
-    const cur = byGen.get(gen);
-    if (cur) {
-      cur.left = Math.min(cur.left, lo);
-      cur.right = Math.max(cur.right, hi);
-    } else {
-      byGen.set(gen, { left: lo, right: hi });
-    }
-  };
-  for (const id of subtreeIds) {
-    const u = units.get(id);
-    if (!u) continue;
-    for (const sp of u.spouses) {
-      const pos = personPos.get(sp);
-      if (!pos) continue;
-      expand(u.generation, pos.x, pos.x + NODE_WIDTH);
-    }
-    if (u.unionId !== undefined) {
-      const pos = unionPos.get(u.unionId);
-      if (pos) expand(u.generation, pos.x, pos.x + UNION_WIDTH);
-    }
-  }
-  return [...byGen.entries()].map(([gen, lr]) => ({ gen, left: lr.left, right: lr.right }));
-}
-
 /**
  * Compute the maximum left and right shifts that keep `subtreeIds` clear
  * of every other unit by at least NODESEP at every generation it touches.
@@ -1036,18 +997,42 @@ function subtreeShiftBounds(
   personPos: Map<string, Point>,
   unionPos: Map<string, Point>,
 ): { minLeft: number; maxRight: number } {
-  const boxes = subtreeBoxes(subtreeIds, units, personPos, unionPos);
-  if (boxes.length === 0) return { minLeft: 0, maxRight: 0 };
+  const boxByGen = new Map<number, { left: number; right: number }>();
+  const expand = (gen: number, lo: number, hi: number) => {
+    const cur = boxByGen.get(gen);
+    if (cur) {
+      cur.left = Math.min(cur.left, lo);
+      cur.right = Math.max(cur.right, hi);
+    } else {
+      boxByGen.set(gen, { left: lo, right: hi });
+    }
+  };
+  const blockersByGen = new Map<number, FamilyUnit[]>();
+  for (const u of units.values()) {
+    if (subtreeIds.has(u.id)) {
+      for (const sp of u.spouses) {
+        const pos = personPos.get(sp);
+        if (pos) expand(u.generation, pos.x, pos.x + NODE_WIDTH);
+      }
+      if (u.unionId !== undefined) {
+        const pos = unionPos.get(u.unionId);
+        if (pos) expand(u.generation, pos.x, pos.x + UNION_WIDTH);
+      }
+      continue;
+    }
+    const list = blockersByGen.get(u.generation) ?? [];
+    list.push(u);
+    blockersByGen.set(u.generation, list);
+  }
+  if (boxByGen.size === 0) return { minLeft: 0, maxRight: 0 };
 
   let minLeft = -Infinity;
   let maxRight = Infinity;
 
-  for (const box of boxes) {
+  for (const [gen, box] of boxByGen) {
     let leftBlocker = -Infinity;
     let rightBlocker = Infinity;
-    for (const u of units.values()) {
-      if (u.generation !== box.gen) continue;
-      if (subtreeIds.has(u.id)) continue;
+    for (const u of blockersByGen.get(gen) ?? []) {
       for (const sp of u.spouses) {
         const pos = personPos.get(sp);
         if (!pos) continue;
