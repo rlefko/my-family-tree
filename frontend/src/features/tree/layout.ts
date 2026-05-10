@@ -868,6 +868,264 @@ function alignSpousesWithParents(
   }
 }
 
+/**
+ * Sum the absolute horizontal distance between every parent edge's source
+ * anchor (parent unit heart for couples, card center for solos) and its
+ * target child card center. Tree edges and cross-lineage edges are both
+ * user-visible long horizontals, so we treat them equally.
+ */
+function totalParentEdgeLength(
+  units: Map<string, FamilyUnit>,
+  unitOfPerson: Map<string, string>,
+  parents: Map<string, string[]>,
+  personPos: Map<string, Point>,
+  unionPos: Map<string, Point>,
+): number {
+  const anchorByUnit = new Map<string, number | null>();
+  const anchorOf = (parentUnitId: string): number | null => {
+    const cached = anchorByUnit.get(parentUnitId);
+    if (cached !== undefined) return cached;
+    const x = parentAnchorX(units.get(parentUnitId), personPos, unionPos);
+    anchorByUnit.set(parentUnitId, x);
+    return x;
+  };
+
+  let total = 0;
+  for (const [childId, parentList] of parents) {
+    const childPos = personPos.get(childId);
+    if (!childPos) continue;
+    const childCenter = childPos.x + NODE_WIDTH / 2;
+    const seenParentUnits = new Set<string>();
+    for (const parentId of parentList) {
+      const parentUnitId = unitOfPerson.get(parentId);
+      if (!parentUnitId || seenParentUnits.has(parentUnitId)) continue;
+      seenParentUnits.add(parentUnitId);
+      const parentX = anchorOf(parentUnitId);
+      if (parentX === null) continue;
+      total += Math.abs(parentX - childCenter);
+    }
+  }
+  return total;
+}
+
+const MAX_OPTIMIZE_ITERATIONS = 20;
+
+type RunLayout = (rootOrder: string[]) => {
+  personPos: Map<string, Point>;
+  unionPos: Map<string, Point>;
+};
+
+/**
+ * Hill-climb on adjacent-pair swaps of root units and of every parent's
+ * `childUnitIds` to reduce total parent-edge length. Cost is recomputed
+ * with the full layout on every candidate so it reflects what the user
+ * actually sees. Strict-less-than acceptance is monotonic, so the loop
+ * terminates as soon as a full pass accepts no swap; the iteration cap
+ * is defense in depth.
+ */
+function optimizeOrderings(
+  units: Map<string, FamilyUnit>,
+  unitOfPerson: Map<string, string>,
+  parents: Map<string, string[]>,
+  rootOrder: string[],
+  runLayout: RunLayout,
+): { personPos: Map<string, Point>; unionPos: Map<string, Point> } {
+  let positions = runLayout(rootOrder);
+  let bestCost = totalParentEdgeLength(
+    units,
+    unitOfPerson,
+    parents,
+    positions.personPos,
+    positions.unionPos,
+  );
+
+  const swapTargets: string[][] = [rootOrder];
+  for (const unit of units.values()) {
+    if (unit.childUnitIds.length >= 2) swapTargets.push(unit.childUnitIds);
+  }
+
+  for (let iter = 0; iter < MAX_OPTIMIZE_ITERATIONS; iter++) {
+    let improved = false;
+    for (const target of swapTargets) {
+      for (let i = 0; i < target.length - 1; i++) {
+        [target[i], target[i + 1]] = [target[i + 1], target[i]];
+        const newPositions = runLayout(rootOrder);
+        const newCost = totalParentEdgeLength(
+          units,
+          unitOfPerson,
+          parents,
+          newPositions.personPos,
+          newPositions.unionPos,
+        );
+        if (newCost < bestCost) {
+          bestCost = newCost;
+          positions = newPositions;
+          improved = true;
+        } else {
+          [target[i], target[i + 1]] = [target[i + 1], target[i]];
+        }
+      }
+    }
+    if (!improved) break;
+  }
+
+  return positions;
+}
+
+/**
+ * Collect every unit id reachable from `root` (root included) so we can
+ * shift its descendant subtree as one block.
+ */
+function collectSubtreeUnitIds(root: FamilyUnit, units: Map<string, FamilyUnit>): Set<string> {
+  const out = new Set<string>();
+  const stack: FamilyUnit[] = [root];
+  while (stack.length > 0) {
+    const u = stack.pop();
+    if (!u || out.has(u.id)) continue;
+    out.add(u.id);
+    for (const childId of u.childUnitIds) {
+      const child = units.get(childId);
+      if (child) stack.push(child);
+    }
+  }
+  return out;
+}
+
+/**
+ * Compute the maximum left and right shifts that keep `subtreeIds` clear
+ * of every other unit by at least NODESEP at every generation it touches.
+ * Returns `{ minLeft, maxRight }` where `minLeft <= 0 <= maxRight`.
+ */
+function subtreeShiftBounds(
+  subtreeIds: Set<string>,
+  units: Map<string, FamilyUnit>,
+  personPos: Map<string, Point>,
+  unionPos: Map<string, Point>,
+): { minLeft: number; maxRight: number } {
+  const boxByGen = new Map<number, { left: number; right: number }>();
+  const expand = (gen: number, lo: number, hi: number) => {
+    const cur = boxByGen.get(gen);
+    if (cur) {
+      cur.left = Math.min(cur.left, lo);
+      cur.right = Math.max(cur.right, hi);
+    } else {
+      boxByGen.set(gen, { left: lo, right: hi });
+    }
+  };
+  const blockersByGen = new Map<number, FamilyUnit[]>();
+  for (const u of units.values()) {
+    if (subtreeIds.has(u.id)) {
+      for (const sp of u.spouses) {
+        const pos = personPos.get(sp);
+        if (pos) expand(u.generation, pos.x, pos.x + NODE_WIDTH);
+      }
+      if (u.unionId !== undefined) {
+        const pos = unionPos.get(u.unionId);
+        if (pos) expand(u.generation, pos.x, pos.x + UNION_WIDTH);
+      }
+      continue;
+    }
+    const list = blockersByGen.get(u.generation) ?? [];
+    list.push(u);
+    blockersByGen.set(u.generation, list);
+  }
+  if (boxByGen.size === 0) return { minLeft: 0, maxRight: 0 };
+
+  let minLeft = -Infinity;
+  let maxRight = Infinity;
+
+  for (const [gen, box] of boxByGen) {
+    let leftBlocker = -Infinity;
+    let rightBlocker = Infinity;
+    for (const u of blockersByGen.get(gen) ?? []) {
+      for (const sp of u.spouses) {
+        const pos = personPos.get(sp);
+        if (!pos) continue;
+        const lo = pos.x;
+        const hi = pos.x + NODE_WIDTH;
+        if (hi <= box.left) leftBlocker = Math.max(leftBlocker, hi);
+        else if (lo >= box.right) rightBlocker = Math.min(rightBlocker, lo);
+      }
+      if (u.unionId !== undefined) {
+        const pos = unionPos.get(u.unionId);
+        if (pos) {
+          const lo = pos.x;
+          const hi = pos.x + UNION_WIDTH;
+          if (hi <= box.left) leftBlocker = Math.max(leftBlocker, hi);
+          else if (lo >= box.right) rightBlocker = Math.min(rightBlocker, lo);
+        }
+      }
+    }
+    const leftRoom = leftBlocker === -Infinity ? -Infinity : box.left - leftBlocker - NODESEP;
+    const rightRoom = rightBlocker === Infinity ? Infinity : rightBlocker - box.right - NODESEP;
+    minLeft = Math.max(minLeft, -leftRoom);
+    maxRight = Math.min(maxRight, rightRoom);
+  }
+
+  return { minLeft: Math.min(0, minLeft), maxRight: Math.max(0, maxRight) };
+}
+
+function shiftSubtreeByX(
+  subtreeIds: Set<string>,
+  units: Map<string, FamilyUnit>,
+  personPos: Map<string, Point>,
+  unionPos: Map<string, Point>,
+  offset: number,
+): void {
+  if (offset === 0) return;
+  for (const id of subtreeIds) {
+    const u = units.get(id);
+    if (!u) continue;
+    for (const sp of u.spouses) {
+      const pos = personPos.get(sp);
+      if (pos) personPos.set(sp, { x: pos.x + offset, y: pos.y });
+    }
+    if (u.unionId !== undefined) {
+      const pos = unionPos.get(u.unionId);
+      if (pos) unionPos.set(u.unionId, { x: pos.x + offset, y: pos.y });
+    }
+  }
+}
+
+/**
+ * For each couple unit whose two spouses come from different parent units,
+ * shift the unit's entire descendant subtree toward the midpoint of the
+ * two parent unions' x anchors. The shift is clipped by sibling and
+ * neighbor-subtree bounds so the move never overlaps anything.
+ */
+function centerJoinedCouples(
+  units: Map<string, FamilyUnit>,
+  parentUnitOfPerson: Map<string, string>,
+  personPos: Map<string, Point>,
+  unionPos: Map<string, Point>,
+): void {
+  for (const unit of units.values()) {
+    if (unit.spouses.length !== 2 || unit.unionId === undefined) continue;
+    const [a, b] = unit.spouses;
+    const aParentUnitId = parentUnitOfPerson.get(a);
+    const bParentUnitId = parentUnitOfPerson.get(b);
+    if (!aParentUnitId || !bParentUnitId) continue;
+    if (aParentUnitId === bParentUnitId) continue;
+    if (aParentUnitId === unit.id || bParentUnitId === unit.id) continue;
+    const aPX = parentAnchorX(units.get(aParentUnitId), personPos, unionPos);
+    const bPX = parentAnchorX(units.get(bParentUnitId), personPos, unionPos);
+    if (aPX === null || bPX === null) continue;
+    const heart = unionPos.get(unit.unionId);
+    if (!heart) continue;
+    const targetCenter = (aPX + bPX) / 2;
+    const currentCenter = heart.x + UNION_WIDTH / 2;
+    const desired = targetCenter - currentCenter;
+    if (Math.abs(desired) < 1) continue;
+
+    const subtreeIds = collectSubtreeUnitIds(unit, units);
+    const bounds = subtreeShiftBounds(subtreeIds, units, personPos, unionPos);
+    const actual = Math.max(bounds.minLeft, Math.min(bounds.maxRight, desired));
+    if (Math.abs(actual) < 1) continue;
+
+    shiftSubtreeByX(subtreeIds, units, personPos, unionPos, actual);
+  }
+}
+
 function indexCoupleEvents(
   events: CoupleEvent[],
 ): Map<string, { date?: string | null; place?: string | null; type: string }> {
@@ -918,7 +1176,7 @@ export function buildLayout(
   for (const p of graph.persons) personById.set(p.id, p);
 
   const generation = assignGenerations(graph.persons, parents, couples);
-  const { units, parentUnitOfPerson } = buildFamilyUnits(
+  const { units, unitOfPerson, parentUnitOfPerson } = buildFamilyUnits(
     graph.persons,
     parents,
     couples,
@@ -929,9 +1187,22 @@ export function buildLayout(
   const layerGraph = buildLayerGraph(units, parentUnitOfPerson, personById);
   medianSweep(layerGraph, personById);
   const rootOrder = applyOrdering(layerGraph);
-  const { personPos, unionPos } = assignCoordinates(units, rootOrder);
-  placeOrphanUnions(couples, unionPos, personPos);
-  alignSpousesWithParents(units, parentUnitOfPerson, personPos, unionPos);
+  // Cost is recomputed after centering so the swap loop picks orderings
+  // that stay short under the centering pass.
+  const runLayout: RunLayout = (order) => {
+    const positions = assignCoordinates(units, order);
+    placeOrphanUnions(couples, positions.unionPos, positions.personPos);
+    alignSpousesWithParents(units, parentUnitOfPerson, positions.personPos, positions.unionPos);
+    centerJoinedCouples(units, parentUnitOfPerson, positions.personPos, positions.unionPos);
+    return positions;
+  };
+  const { personPos, unionPos } = optimizeOrderings(
+    units,
+    unitOfPerson,
+    parents,
+    rootOrder,
+    runLayout,
+  );
 
   const childSources = buildChildSources(parents, couples);
 

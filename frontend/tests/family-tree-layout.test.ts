@@ -673,4 +673,89 @@ describe("buildLayout (family tree)", () => {
     expect(elapsed).toBeLessThan(500);
     for (const node of nodes) expectFinitePosition(node);
   });
+
+  it("centers a joined couple roughly between its two parent unions", () => {
+    // Two parent couples and one joined-couple child; the centering pass
+    // should pull the child heart toward the midpoint of the parent hearts.
+    const persons = [
+      makePerson("p-momA", "Mom A", "1940"),
+      makePerson("p-dadA", "Dad A", "1940"),
+      makePerson("p-momB", "Mom B", "1950"),
+      makePerson("p-dadB", "Dad B", "1950"),
+      makePerson("child-a", "Joined A", "1972"),
+      makePerson("child-b", "Joined B", "1972"),
+    ];
+    const { nodes } = buildLayout({
+      persons,
+      couple_events: [],
+      relationships: [
+        makeRel("r1", "p-momA", "p-dadA", "spouse_of"),
+        makeRel("r2", "p-dadA", "p-momA", "spouse_of"),
+        makeRel("r3", "p-momB", "p-dadB", "spouse_of"),
+        makeRel("r4", "p-dadB", "p-momB", "spouse_of"),
+        makeRel("r5", "p-momA", "child-a", "parent_of"),
+        makeRel("r6", "p-dadA", "child-a", "parent_of"),
+        makeRel("r7", "p-momB", "child-b", "parent_of"),
+        makeRel("r8", "p-dadB", "child-b", "parent_of"),
+        makeRel("r9", "child-a", "child-b", "spouse_of"),
+        makeRel("r10", "child-b", "child-a", "spouse_of"),
+      ],
+    });
+
+    const aHeart = nodes.find((n) => n.id.startsWith("union:") && n.id.includes("p-dadA"));
+    const bHeart = nodes.find((n) => n.id.startsWith("union:") && n.id.includes("p-dadB"));
+    const childHeart = nodes.find((n) => n.id.startsWith("union:") && n.id.includes("child-a"));
+    expect(aHeart).toBeDefined();
+    expect(bHeart).toBeDefined();
+    expect(childHeart).toBeDefined();
+
+    const aCenter = (aHeart?.position.x ?? 0) + UNION_WIDTH / 2;
+    const bCenter = (bHeart?.position.x ?? 0) + UNION_WIDTH / 2;
+    const target = (aCenter + bCenter) / 2;
+    const childCenter = (childHeart?.position.x ?? 0) + UNION_WIDTH / 2;
+    expect(Math.abs(childCenter - target)).toBeLessThan(NODE_WIDTH);
+  });
+
+  it("respects sibling boundaries when centering a joined couple", () => {
+    // Three children under Mom A + Dad A; the middle one is joined to a
+    // child of Mom B + Dad B. Centering must not push past sibling bounds.
+    const persons = [
+      makePerson("p-momA", "Mom A", "1940"),
+      makePerson("p-dadA", "Dad A", "1940"),
+      makePerson("p-momB", "Mom B", "1950"),
+      makePerson("p-dadB", "Dad B", "1950"),
+      makePerson("sib-1", "Sibling One", "1970"),
+      makePerson("child-a", "Joined A", "1972"),
+      makePerson("sib-2", "Sibling Two", "1974"),
+      makePerson("child-b", "Joined B", "1972"),
+    ];
+    const { nodes } = buildLayout({
+      persons,
+      couple_events: [],
+      relationships: [
+        makeRel("r1", "p-momA", "p-dadA", "spouse_of"),
+        makeRel("r2", "p-dadA", "p-momA", "spouse_of"),
+        makeRel("r3", "p-momB", "p-dadB", "spouse_of"),
+        makeRel("r4", "p-dadB", "p-momB", "spouse_of"),
+        makeRel("r5", "p-momA", "sib-1", "parent_of"),
+        makeRel("r6", "p-dadA", "sib-1", "parent_of"),
+        makeRel("r7", "p-momA", "child-a", "parent_of"),
+        makeRel("r8", "p-dadA", "child-a", "parent_of"),
+        makeRel("r9", "p-momA", "sib-2", "parent_of"),
+        makeRel("r10", "p-dadA", "sib-2", "parent_of"),
+        makeRel("r11", "p-momB", "child-b", "parent_of"),
+        makeRel("r12", "p-dadB", "child-b", "parent_of"),
+        makeRel("r13", "child-a", "child-b", "spouse_of"),
+        makeRel("r14", "child-b", "child-a", "spouse_of"),
+      ],
+    });
+
+    // Siblings can end up in any order (the swap optimizer is allowed to
+    // pull the joined sibling toward Mom B's side), but all three must sit
+    // in distinct, non-overlapping x slots.
+    const sibs = [xOf(nodes, "sib-1"), xOf(nodes, "child-a"), xOf(nodes, "sib-2")];
+    sibs.sort((a, b) => a - b);
+    expect(sibs[0] + NODE_WIDTH).toBeLessThanOrEqual(sibs[1]);
+    expect(sibs[1] + NODE_WIDTH).toBeLessThanOrEqual(sibs[2]);
+  });
 });
