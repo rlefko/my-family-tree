@@ -220,10 +220,44 @@ function compareSiblingPersons(a: PersonNode | undefined, b: PersonNode | undefi
 }
 
 /**
+ * Group every person by their canonical parent set so the layering pass
+ * can lift full siblings together. Half-siblings (different parent sets)
+ * land in different clusters and lift independently. Strict equality is
+ * what the user expects: only true siblings share a generation by
+ * definition.
+ */
+function buildSiblingClusters(parents: Map<string, string[]>): string[][] {
+  const groups = new Map<string, string[]>();
+  for (const [child, parentList] of parents) {
+    if (parentList.length === 0) continue;
+    const sortedParents = [...parentList];
+    sortedParents.sort();
+    const key = sortedParents.join("|");
+    const list = groups.get(key) ?? [];
+    list.push(child);
+    groups.set(key, list);
+  }
+  const out: string[][] = [];
+  for (const cluster of groups.values()) {
+    if (cluster.length > 1) out.push(cluster);
+  }
+  return out;
+}
+
+/**
  * Assign each person a 0-based generation. Roots (no parents) start at 0;
  * descendants drop by one rank per parent_of hop, taking the longest path
- * so cousins-of-cousins still align. After each relaxation, lift the
- * shallower member of every couple so spouses share a row.
+ * so cousins-of-cousins still align. After each relaxation, four
+ * monotone relaxers run inside the fixed-point loop:
+ *
+ *   - longest-path: gen[child] >= max(gen[parent]) + 1
+ *   - spouse-lift: spouses share the deeper of their two generations
+ *   - sibling-lift: full siblings share the deepest generation in their
+ *     cluster, so a spouse-lifted person doesn't leave their siblings
+ *     stranded several rows above them
+ *   - parent-push: each parent sits at least one row above its deepest
+ *     child, which propagates a sibling lift upward into ancestors who
+ *     would otherwise stay at their longest-path generation
  */
 function assignGenerations(
   persons: PersonNode[],
@@ -232,8 +266,9 @@ function assignGenerations(
 ): Map<string, number> {
   const gen = new Map<string, number>();
   for (const p of persons) gen.set(p.id, 0);
+  const siblingClusters = buildSiblingClusters(parents);
 
-  const cap = persons.length * 4 + 8;
+  const cap = persons.length * 8 + 16;
   let iter = 0;
   let changed = true;
   while (changed && iter++ < cap) {
@@ -262,6 +297,30 @@ function assignGenerations(
       if ((gen.get(u.b) ?? 0) !== target) {
         gen.set(u.b, target);
         changed = true;
+      }
+    }
+    for (const cluster of siblingClusters) {
+      let target = 0;
+      for (const memberId of cluster) {
+        const g = gen.get(memberId) ?? 0;
+        if (g > target) target = g;
+      }
+      for (const memberId of cluster) {
+        if ((gen.get(memberId) ?? 0) !== target) {
+          gen.set(memberId, target);
+          changed = true;
+        }
+      }
+    }
+    for (const [childId, parentList] of parents) {
+      const childGen = gen.get(childId) ?? 0;
+      if (childGen === 0) continue;
+      const target = childGen - 1;
+      for (const parentId of parentList) {
+        if ((gen.get(parentId) ?? 0) < target) {
+          gen.set(parentId, target);
+          changed = true;
+        }
       }
     }
   }
