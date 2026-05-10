@@ -687,8 +687,9 @@ function medianSweep(graph: LayerGraph, personById: Map<string, PersonNode>): vo
  * Push the swept ordering back into the unit forest:
  *  - Each parent's `childUnitIds` is reordered to match its children's
  *    appearance in the layer below.
- *  - The layer-0 order becomes the canonical root order, returned to the
- *    caller so coordinate assignment can pack roots in the same sequence.
+ *  - Parentless units of every layer are concatenated into a single
+ *    canonical root order, so coordinate assignment can pack them in the
+ *    same sequence the sweep settled on.
  */
 function applyOrdering(graph: LayerGraph): string[] {
   const gens = [...graph.layers.keys()];
@@ -710,11 +711,12 @@ function applyOrdering(graph: LayerGraph): string[] {
     }
   }
 
-  const minGen = gens.length > 0 ? gens[0] : 0;
-  const rootLayer = graph.layers.get(minGen) ?? [];
   const rootOrder: string[] = [];
-  for (const unit of rootLayer) {
-    if (!unit.primaryParentUnitId) rootOrder.push(unit.id);
+  for (const gen of gens) {
+    const layer = graph.layers.get(gen) ?? [];
+    for (const unit of layer) {
+      if (!unit.primaryParentUnitId) rootOrder.push(unit.id);
+    }
   }
   return rootOrder;
 }
@@ -733,8 +735,7 @@ function unitBarWidth(unit: FamilyUnit): number {
  */
 function assignCoordinates(
   units: Map<string, FamilyUnit>,
-  personById: Map<string, PersonNode>,
-  rootOrder?: string[],
+  rootOrder: string[],
 ): { personPos: Map<string, Point>; unionPos: Map<string, Point> } {
   const subtreeWidth = new Map<string, number>();
   const computeWidth = (unitId: string): number => {
@@ -753,36 +754,7 @@ function assignCoordinates(
     return w;
   };
 
-  let rootIds: string[];
-  if (rootOrder && rootOrder.length > 0) {
-    rootIds = rootOrder.filter((id) => {
-      const u = units.get(id);
-      return u !== undefined && !u.primaryParentUnitId;
-    });
-    // Append any root units the caller forgot to mention so we never lose a
-    // node from the chart.
-    for (const unit of units.values()) {
-      if (unit.primaryParentUnitId) continue;
-      if (!rootIds.includes(unit.id)) rootIds.push(unit.id);
-    }
-  } else {
-    rootIds = [];
-    for (const unit of units.values()) {
-      if (!unit.primaryParentUnitId) rootIds.push(unit.id);
-    }
-    rootIds.sort((a, b) => {
-      const ua = units.get(a);
-      const ub = units.get(b);
-      const ga = ua?.generation ?? 0;
-      const gb = ub?.generation ?? 0;
-      if (ga !== gb) return ga - gb;
-      return compareSiblingPersons(
-        personById.get(ua?.spouses[0] ?? ""),
-        personById.get(ub?.spouses[0] ?? ""),
-      );
-    });
-  }
-  for (const id of rootIds) computeWidth(id);
+  for (const id of rootOrder) computeWidth(id);
 
   const personPos = new Map<string, Point>();
   const unionPos = new Map<string, Point>();
@@ -820,7 +792,7 @@ function assignCoordinates(
   };
 
   let cursorX = 0;
-  for (const id of rootIds) {
+  for (const id of rootOrder) {
     place(id, cursorX);
     cursorX += (subtreeWidth.get(id) ?? 0) + ROOT_GAP;
   }
@@ -964,7 +936,7 @@ export function buildLayout(
   const layerGraph = buildLayerGraph(units, parentUnitOfPerson, personById);
   medianSweep(layerGraph, personById);
   const rootOrder = applyOrdering(layerGraph);
-  const { personPos, unionPos } = assignCoordinates(units, personById, rootOrder);
+  const { personPos, unionPos } = assignCoordinates(units, rootOrder);
   placeOrphanUnions(couples, unionPos, personPos);
   alignSpousesWithParents(units, parentUnitOfPerson, personPos, unionPos);
 
