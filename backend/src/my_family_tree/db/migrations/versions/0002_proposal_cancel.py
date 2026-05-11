@@ -20,14 +20,11 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     op.execute(sa.text("ALTER TYPE proposal_status ADD VALUE IF NOT EXISTS 'canceled'"))
-    op.add_column(
-        "proposal",
-        sa.Column("canceled_at", sa.DateTime(timezone=True), nullable=True),
-    )
-    op.add_column(
-        "proposal",
-        sa.Column("cancel_reason", sa.Text(), nullable=True),
-    )
+    # 0001's `target_metadata.create_all` uses the current SQLModel definitions
+    # so a fresh install already has these columns; IF NOT EXISTS keeps the
+    # upgrade additive for older databases without colliding on fresh ones.
+    op.execute(sa.text("ALTER TABLE proposal ADD COLUMN IF NOT EXISTS canceled_at timestamptz"))
+    op.execute(sa.text("ALTER TABLE proposal ADD COLUMN IF NOT EXISTS cancel_reason text"))
 
 
 def downgrade() -> None:
