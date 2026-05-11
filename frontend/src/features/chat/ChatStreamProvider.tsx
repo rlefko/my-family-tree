@@ -51,7 +51,7 @@ export type TraceEntry = ThinkingEntry | ToolEntry;
 
 export function traceSummary(trace: TraceEntry[]): string {
   const toolCount = trace.reduce((n, e) => (e.kind === "tool" ? n + 1 : n), 0);
-  if (toolCount === 0) return "Reasoning summary";
+  if (toolCount === 0) return "Reasoning";
   return `Reasoned and used ${toolCount} tool${toolCount === 1 ? "" : "s"}`;
 }
 

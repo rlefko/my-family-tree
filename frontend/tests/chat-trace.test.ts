@@ -179,7 +179,7 @@ const tool = (id: string, name = "tool_x"): TraceEntry => ({
 
 describe("traceSummary", () => {
   it("returns the reasoning-only label when no tools were called", () => {
-    expect(traceSummary([thinking("plan")])).toBe("Reasoning summary");
+    expect(traceSummary([thinking("plan")])).toBe("Reasoning");
   });
 
   it("uses singular tool wording for exactly one tool call", () => {
@@ -193,7 +193,7 @@ describe("traceSummary", () => {
   });
 
   it("falls back to the reasoning-only label on an empty trace", () => {
-    expect(traceSummary([])).toBe("Reasoning summary");
+    expect(traceSummary([])).toBe("Reasoning");
   });
 });
 

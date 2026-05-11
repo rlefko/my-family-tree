@@ -117,6 +117,7 @@ export function InlineProposals({ ids }: { ids: string[] }) {
   const allResolved = pending.length === 0;
   const approvedCount = matched.filter((p) => p.status === "approved").length;
   const rejectedCount = matched.filter((p) => p.status === "rejected").length;
+  const canceledCount = matched.filter((p) => p.status === "canceled").length;
 
   // Once every proposal in this set is resolved, collapse the whole block
   // into a single summary line; click to expand the audit trail.
@@ -124,6 +125,7 @@ export function InlineProposals({ ids }: { ids: string[] }) {
     const parts: string[] = [];
     if (approvedCount) parts.push(`${approvedCount} approved`);
     if (rejectedCount) parts.push(`${rejectedCount} rejected`);
+    if (canceledCount) parts.push(`${canceledCount} canceled`);
     const summary = parts.join(" · ") || "all resolved";
     return (
       <details className="group mt-3 rounded-md border border-emerald-200 bg-emerald-50/40 text-xs dark:border-emerald-900 dark:bg-emerald-950/30">
