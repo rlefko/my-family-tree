@@ -1,9 +1,7 @@
 """Shared `make_proposal` helper for every propose-* tool plus the
-`proposal_cancel` MCP tool. The domain-specific propose tools live next to
-their search/get cousins (`tools/persons.py`, `tools/relationships.py`,
-etc.); centralizing the helper here keeps the proposal-row writing logic in
-one place. `proposal_cancel` is the only tool registered from this module
-because it operates across every domain at once."""
+cross-domain `proposal_cancel` MCP tool. Domain-specific propose tools live
+next to their search/get cousins (`tools/persons.py`, etc.) and import the
+helper from here."""
 
 from __future__ import annotations
 

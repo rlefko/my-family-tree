@@ -19,9 +19,6 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    # The chat agent calls the new `proposal_cancel` MCP tool to withdraw a
-    # pending proposal it queued by mistake. The status moves to `canceled`
-    # and the reason is recorded for audit.
     op.execute(sa.text("ALTER TYPE proposal_status ADD VALUE IF NOT EXISTS 'canceled'"))
     op.add_column(
         "proposal",
@@ -34,8 +31,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Postgres has no first-class way to drop an enum value, so the
-    # `canceled` value is left in place on downgrade. Application code is
-    # the source of truth for which values are reachable.
+    # Postgres cannot drop a single enum value, so `canceled` stays in the type.
     op.drop_column("proposal", "cancel_reason")
     op.drop_column("proposal", "canceled_at")
