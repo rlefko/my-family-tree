@@ -58,6 +58,20 @@ class _ProposalRefLike:
 
 
 @dataclass
+class _CancelRefLike:
+    """Mirrors `ProposalCanceled` so the loop's tool-result pipe sees the
+    same `proposal_id` shape it sees from the propose-* tools, but the
+    accompanying `block.name == "proposal_cancel"` flips the loop into the
+    canceled-set branch."""
+
+    proposal_id: str = "00000000-0000-0000-0000-0000000abc01"
+    status: str = "canceled"
+
+    def model_dump(self, mode: str = "python") -> dict[str, Any]:
+        return {"proposal_id": self.proposal_id, "status": self.status}
+
+
+@dataclass
 class _RequestUserInputAck:
     """Mirrors `RequestUserInputOutput` so the loop's tool-result pipe can
     read `acknowledged`/`question`/`options` like a real Pydantic model."""
@@ -239,6 +253,108 @@ async def test_tool_call_dispatches_into_host_and_threads_result_back() -> None:
     second_history = provider.seen_messages[1]
     assert any(m.role == "assistant" for m in second_history)
     assert any(m.role == "tool" for m in second_history)
+
+
+@pytest.mark.unit
+async def test_same_turn_create_then_cancel_filters_id_from_done_payload() -> None:
+    """When the agent creates a proposal and cancels it later in the same
+    turn, the user never had a chance to see the original. The done event
+    must omit the canceled id so the inline list does not show pure noise."""
+    create_args = {"display_name": "Anna Doe"}
+    cancel_args = {"proposal_id": "p1", "reason": "swapped subject and object"}
+    first_turn = [
+        _tool_started("call_create", "person_propose_create"),
+        _tool_input("call_create", json.dumps(create_args)),
+        _tool_finished("call_create"),
+        _tool_started("call_cancel", "proposal_cancel"),
+        _tool_input("call_cancel", json.dumps(cancel_args)),
+        _tool_finished("call_cancel"),
+        _usage(),
+        _done(),
+    ]
+    second_turn = [_text("Done."), _usage(), _done()]
+    provider = FakeProvider(scripts=[first_turn, second_turn])
+    host = FakeHost(
+        next_outputs=[
+            _ProposalRefLike(proposal_id="p1"),
+            _CancelRefLike(proposal_id="p1"),
+        ]
+    )
+    agent = ChatAgent(provider=provider, model="m", host=host, budgets=Budgets())
+
+    events = []
+    async for evt in agent.run_turn(_initial_messages()):
+        events.append((evt.type, evt.payload))
+
+    done = next(e[1] for e in events if e[0] == "done")
+    assert done["proposal_ids"] == []
+
+
+@pytest.mark.unit
+async def test_cross_turn_cancel_alone_yields_empty_done_payload() -> None:
+    """Canceling a proposal that was created in a prior turn (this turn never
+    proposed anything new) must leave the done payload empty. The canceled id
+    only ever lived on the original turn's persisted proposalIds, where the
+    inline list will pick up the canceled status from the proposal row."""
+    cancel_args = {"proposal_id": "old", "reason": "user rephrased the request"}
+    first_turn = [
+        _tool_started("call_cancel", "proposal_cancel"),
+        _tool_input("call_cancel", json.dumps(cancel_args)),
+        _tool_finished("call_cancel"),
+        _usage(),
+        _done(),
+    ]
+    second_turn = [_text("Withdrew the earlier proposal."), _usage(), _done()]
+    provider = FakeProvider(scripts=[first_turn, second_turn])
+    host = FakeHost(next_outputs=[_CancelRefLike(proposal_id="old")])
+    agent = ChatAgent(provider=provider, model="m", host=host, budgets=Budgets())
+
+    events = []
+    async for evt in agent.run_turn(_initial_messages()):
+        events.append((evt.type, evt.payload))
+
+    done = next(e[1] for e in events if e[0] == "done")
+    assert done["proposal_ids"] == []
+
+
+@pytest.mark.unit
+async def test_cancel_then_replace_in_same_turn_keeps_only_the_replacement() -> None:
+    """Create P1, cancel P1, create P2 in one stream: the done payload must
+    list only P2. P1 was a typo the agent corrected; the user sees just the
+    final, intended proposal in the inline list."""
+    create1_args = {"display_name": "Anna Doe"}
+    cancel_args = {"proposal_id": "p1", "reason": "typoed name"}
+    create2_args = {"display_name": "Anna May Doe"}
+    first_turn = [
+        _tool_started("call_create_1", "person_propose_create"),
+        _tool_input("call_create_1", json.dumps(create1_args)),
+        _tool_finished("call_create_1"),
+        _tool_started("call_cancel", "proposal_cancel"),
+        _tool_input("call_cancel", json.dumps(cancel_args)),
+        _tool_finished("call_cancel"),
+        _tool_started("call_create_2", "person_propose_create"),
+        _tool_input("call_create_2", json.dumps(create2_args)),
+        _tool_finished("call_create_2"),
+        _usage(),
+        _done(),
+    ]
+    second_turn = [_text("Done."), _usage(), _done()]
+    provider = FakeProvider(scripts=[first_turn, second_turn])
+    host = FakeHost(
+        next_outputs=[
+            _ProposalRefLike(proposal_id="p1"),
+            _CancelRefLike(proposal_id="p1"),
+            _ProposalRefLike(proposal_id="p2"),
+        ]
+    )
+    agent = ChatAgent(provider=provider, model="m", host=host, budgets=Budgets())
+
+    events = []
+    async for evt in agent.run_turn(_initial_messages()):
+        events.append((evt.type, evt.payload))
+
+    done = next(e[1] for e in events if e[0] == "done")
+    assert done["proposal_ids"] == ["p2"]
 
 
 @pytest.mark.unit
