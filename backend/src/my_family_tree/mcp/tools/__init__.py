@@ -2,8 +2,9 @@
 The MCP server and the in-process ToolHost both rely on import-time side
 effects. Add new tool modules here so they're picked up automatically.
 
-Note: `proposals` no longer registers tools directly. It exposes the shared
-`make_proposal` helper used by the per-domain modules below."""
+`proposals` registers a single cross-domain tool (`proposal_cancel`); the
+per-domain propose-* tools live in their domain modules and reuse the
+shared `make_proposal` helper from there."""
 
 from my_family_tree.mcp.tools import (
     chunks,
@@ -17,6 +18,7 @@ from my_family_tree.mcp.tools import (
     notes,
     persons,
     places,
+    proposals,
     relationships,
     sources,
     stats,
@@ -38,6 +40,7 @@ __all__ = [
     "notes",
     "persons",
     "places",
+    "proposals",
     "relationships",
     "sources",
     "stats",

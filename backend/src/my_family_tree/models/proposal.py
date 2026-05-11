@@ -60,8 +60,13 @@ class Proposal(SQLModel, table=True):
         default=None,
         sa_column=Column(DateTime(timezone=True), nullable=True),
     )
+    canceled_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
     apply_error: str | None = text_column()
     approved_by: str | None = text_column()
+    cancel_reason: str | None = text_column()
 
     created_at: datetime = created_at_column()
     updated_at: datetime = updated_at_column()

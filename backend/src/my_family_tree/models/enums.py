@@ -176,6 +176,7 @@ class ProposalStatus(StrEnum):
     approved = "approved"
     rejected = "rejected"
     expired = "expired"
+    canceled = "canceled"
 
 
 class MessageRole(StrEnum):
