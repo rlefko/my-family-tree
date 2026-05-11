@@ -121,7 +121,14 @@ class ChatAgent:
         tokens_used = 0
         tool_calls_used = 0
         history = list(messages)
-        proposal_ids: list[str] = []
+        # Track creates and cancellations separately so a same-turn
+        # cancel-after-create wipes the id from the user-visible payload; the
+        # user has never seen those proposals, and showing them as canceled in
+        # the inline list is pure noise. Cross-turn cancels naturally fall out:
+        # the create happened in a prior turn, so this turn's `created` set
+        # never contained that id and there is nothing to filter.
+        created_proposal_ids: list[str] = []
+        canceled_proposal_ids: set[str] = set()
         pending_user_input: dict[str, Any] | None = None
 
         while True:
@@ -230,7 +237,11 @@ class ChatAgent:
                     and isinstance(result.output, dict)
                     and result.output.get("proposal_id") is not None
                 ):
-                    proposal_ids.append(str(result.output["proposal_id"]))
+                    pid = str(result.output["proposal_id"])
+                    if block.name == "proposal_cancel":
+                        canceled_proposal_ids.add(pid)
+                    else:
+                        created_proposal_ids.append(pid)
                 if (
                     block.name == "request_user_input"
                     and not result.is_error
@@ -281,6 +292,10 @@ class ChatAgent:
                 yield ChatTurnEvent(type="error", payload={"message": str(e)})
                 return
 
+            visible_proposal_ids = [
+                p for p in created_proposal_ids if p not in canceled_proposal_ids
+            ]
+
             if pending_user_input is not None:
                 # The agent asked for clarification. Surface a `needs_input`
                 # event with the question/options so the UI can render an
@@ -296,7 +311,7 @@ class ChatAgent:
                     payload={
                         "tokens_used": tokens_used,
                         "tool_calls_used": tool_calls_used,
-                        "proposal_ids": list(proposal_ids),
+                        "proposal_ids": visible_proposal_ids,
                     },
                 )
                 return
@@ -311,7 +326,7 @@ class ChatAgent:
                     payload={
                         "tokens_used": tokens_used,
                         "tool_calls_used": tool_calls_used,
-                        "proposal_ids": list(proposal_ids),
+                        "proposal_ids": visible_proposal_ids,
                     },
                 )
                 return
