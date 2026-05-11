@@ -229,15 +229,19 @@ def _agent_for_request(
         subagent_runner=TraversalSubagentRunner(provider=provider, model=model),
     )
     host = ToolHost(get_registry(), context=ctx, settings=get_settings())
-    # Chat-facing latency trim. The traversal subagent intentionally keeps
-    # the thorough ChatAgent defaults so deep walks stay deliberate.
+    # Medium effort is the floor for OpenAI to surface multi-part reasoning
+    # summaries (which is what `thinking_break` keys off), and the budget
+    # has to leave room for reasoning plus several tool-call argument
+    # payloads plus the closing one-line summary. Still under the 32768
+    # ChatAgent default; the traversal subagent keeps that thorough default
+    # so deep walks stay deliberate.
     return ChatAgent(
         provider=provider,
         model=model,
         host=host,
         budgets=Budgets(),
-        reasoning=ReasoningConfig(effort="low"),
-        max_output_tokens=12288,
+        reasoning=ReasoningConfig(effort="medium"),
+        max_output_tokens=24576,
     )
 
 
