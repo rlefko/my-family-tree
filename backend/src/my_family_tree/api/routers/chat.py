@@ -475,7 +475,8 @@ _SESSION_STATE_HEADER = (
     "status=approved as canonical: do NOT re-propose the same person, "
     "relationship, event, place, or source, and you may reference its "
     "target_id directly. Treat status=pending as already queued: do not "
-    "duplicate it. Treat status=rejected as a decision not to retry "
+    "duplicate it. Treat status=rejected (user) or status=canceled (your "
+    "own withdrawal via proposal_cancel) as a decision not to retry "
     "unless the user asks explicitly. status=expired is stale. This "
     "block is out-of-band like [Attached: ...]; do not echo it back."
 )
